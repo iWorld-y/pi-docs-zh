@@ -1,27 +1,27 @@
 # Containerization
 
-Pi runs with all permissions by default, but in some cases, you will want to have more control over what directories Pi can write to and which accesses it has.
+Pi 默认以全部权限运行，但在某些情况下，你可能希望对 Pi 可以写入的目录和拥有的访问权限有更多控制。
 
-There are two general options. You can either
-1. run the whole `pi` process inside an isolated environment, or
-2. run `pi` on the host and route tool execution into an isolated environment.
+有两个常规选项。你可以选择：
+1. 在整个隔离环境中运行 `pi` 进程，或者
+2. 在主机上运行 `pi`，并将工具执行路由到隔离环境中。
 
-## Choose a pattern
+## 选择模式
 
-| Pattern | What is isolated | Best for | Notes |
+| 模式 | 隔离什么 | 最适合 | 备注 |
 | --- | --- | --- | --- |
-| Gondolin extension | Built-in tools and `!` commands | Local micro-VM isolation while keeping auth on host | See [`examples/extensions/gondolin/`](../examples/extensions/gondolin/). |
-| Plain Docker | Whole `pi` process in a local container | Simple local isolation | Provider API keys enter the container. |
-| OpenShell | Whole `pi` process in a policy-controlled sandbox | Local or remote managed sandbox | Requires an OpenShell gateway |
+| Gondolin 扩展 | 内置工具和 `!` 命令 | 本地 micro-VM 隔离，同时保持认证在主机上 | 参见 [`examples/extensions/gondolin/`](../examples/extensions/gondolin/) |
+| 纯 Docker | 在本地容器中运行整个 `pi` 进程 | 简单的本地隔离 | 提供商 API 密钥会进入容器 |
+| OpenShell | 在策略控制的沙箱中运行整个 `pi` 进程 | 本地或远程托管的沙箱 | 需要 OpenShell 网关 |
 
-Extensions run wherever the `pi` process runs. If you run host `pi` with a tool-routing extension, other custom extension tools still run on the host unless they also delegate their operations.
+扩展在运行 `pi` 进程的地方运行。如果你在主机上运行带有工具路由扩展的 pi，其他自定义扩展工具仍然在主机上运行，除非它们也委托自己的操作。
 
 ## Gondolin
 
-[Gondolin](https://github.com/earendil-works/gondolin) is a local Linux micro-VM.
-Use the [example extension](../examples/extensions/gondolin) when you want `pi` on the host but all built-in tools routed into the VM.
+[Gondolin](https://github.com/earendil-works/gondolin) 是一个本地 Linux micro-VM。
+当你希望 pi 在主机上运行，但将所有内置工具路由到 VM 中时，使用[示例扩展](../examples/extensions/gondolin)。
 
-Setup:
+配置：
 
 ```bash
 cp -R packages/coding-agent/examples/extensions/gondolin ~/.pi/agent/extensions/gondolin
@@ -29,24 +29,24 @@ cd ~/.pi/agent/extensions/gondolin
 npm install --ignore-scripts
 ```
 
-Run from the project you want mounted:
+从要挂载的项目目录运行：
 
 ```bash
 cd /path/to/project
 pi -e ~/.pi/agent/extensions/gondolin
 ```
 
-The extension mounts the host cwd at `/workspace` in the VM and overrides `read`, `write`, `edit`, `bash`, `grep`, `find`, and `ls`.
-User `!` commands are routed into the VM, as well.
-File changes under `/workspace` write through to the host.
+扩展将主机 cwd 挂载到 VM 中的 `/workspace`，并重写 `read`、`write`、`edit`、`bash`、`grep`、`find` 和 `ls`。
+用户 `!` 命令也被路由到 VM 中。
+`/workspace` 下的文件更改会写回到主机。
 
-Requirements: Node.js >= 23.6.0 for `@earendil-works/gondolin`, plus QEMU (requires installation through your package manager).
+需求：Node.js >= 23.6.0 用于 `@earendil-works/gondolin`，加上 QEMU（需要通过包管理器安装）。
 
-## Plain Docker
+## 纯 Docker
 
-Run the whole `pi` process in Docker when you want the simplest local container boundary.
+当你想要最简单的本地容器边界时，可以在 Docker 中运行整个 `pi` 进程。
 
-`Dockerfile.pi`:
+`Dockerfile.pi`：
 
 ```dockerfile
 FROM node:24-bookworm-slim
@@ -60,7 +60,7 @@ WORKDIR /workspace
 ENTRYPOINT ["pi"]
 ```
 
-Build and run:
+构建并运行：
 
 ```bash
 docker build -t pi-sandbox -f Dockerfile.pi .
@@ -72,40 +72,40 @@ docker run --rm -it \
   pi-sandbox
 ```
 
-The `-v "$PWD:/workspace"` mounts your current directory into the container at /workspace such that reads and writes in `/workspace` inside Docker directly affect your host files, like in the Gondolin example.
+`-v "$PWD:/workspace"` 将当前目录挂载到容器的 /workspace 中，使得 Docker 内对 `/workspace` 的读写直接影响主机文件，就像 Gondolin 示例中一样。
 
-Use a named volume for `/root/.pi/agent` if you want container-local settings and sessions. Mounting your host `~/.pi/agent` exposes host auth and session files to the container.
+如果你想要容器本地的设置和会话，请为 `/root/.pi/agent` 使用命名卷。挂载主机的 `~/.pi/agent` 会将主机认证和会话文件暴露给容器。
 
 ## OpenShell
 
-Use [NVIDIA OpenShell](https://docs.nvidia.com/openshell/about/overview) when you want a policy-controlled sandbox with filesystem, process, network, credential, and inference controls.
-OpenShell can run sandboxes through a local gateway backed by Docker, Podman, or a VM runtime, or through a remote Kubernetes gateway.
+当你需要一个带有文件系统、进程、网络、凭证和推理控制的策略控制沙箱时，使用 [NVIDIA OpenShell](https://docs.nvidia.com/openshell/about/overview)。
+OpenShell 可以通过由 Docker、Podman 或 VM 运行时支持的本地网关运行沙箱，也可以通过远程 Kubernetes 网关运行。
 
-Every sandbox requires an active gateway.
-Register and select one before creating a sandbox:
+每个沙箱都需要一个活动的网关。
+在创建沙箱之前注册并选择一个：
 
 ```bash
 openshell gateway add <gateway-url> --name <name>
 openshell gateway select <name>
 ```
 
-Launch `pi` inside an OpenShell sandbox:
+在 OpenShell 沙箱内启动 `pi`：
 
 ```bash
 openshell sandbox create --name pi-sandbox --from pi -- pi
 ```
 
-In this pattern, the whole `pi` process runs inside the sandbox.
-Built-in tools, `!` commands, and extension tools execute inside the OpenShell boundary.
+在这个模式中，整个 `pi` 进程在沙箱内运行。
+内置工具、`!` 命令和扩展工具在 OpenShell 边界内执行。
 
-If the gateway is remote, project files are not bind-mounted from the host, meaning writes in the sandbox are not reflected on your machine.
-Clone the repository inside the sandbox or use OpenShell file transfer commands:
+如果网关是远程的，项目文件不会从主机绑定挂载，这意味着沙箱中的写入不会反映到你的机器上。
+在沙箱内克隆仓库或使用 OpenShell 文件传输命令：
 
 ```bash
 openshell sandbox upload pi-sandbox ./repo /workspace
 openshell sandbox download pi-sandbox /workspace/repo ./repo-out
 ```
 
-OpenShell providers can keep raw model API keys outside the sandbox.
-When inference routing is configured, code inside the sandbox can call `https://inference.local`, and the gateway injects the configured provider credentials upstream.
-Configure Pi to use the corresponding OpenAI-compatible or Anthropic-compatible endpoint if you want model traffic to use this route.
+OpenShell 提供商可以将原始模型 API 密钥保留在沙箱外部。
+当配置了推理路由时，沙箱内的代码可以调用 `https://inference.local`，网关会在上游注入配置的提供商凭证。
+如果你想让模型流量使用此路由，请将 Pi 配置为使用相应的 OpenAI 兼容或 Anthropic 兼容端点。
