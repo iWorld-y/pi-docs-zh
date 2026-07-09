@@ -1,95 +1,95 @@
-> pi can create prompt templates. Ask it to build one for your workflow.
+> pi 可以创建提示词模板。让它为你的工作流构建一个。
 
-# Prompt Templates
+# 提示词模板
 
-Prompt templates are Markdown snippets that expand into full prompts. Type `/name` in the editor to invoke a template, where `name` is the filename without `.md`.
+提示词模板是 Markdown 片段，可展开为完整提示词。在编辑器中键入 `/name` 即可调用模板，其中 `name` 是不含 `.md` 的文件名。
 
-## Locations
+## 加载位置
 
-Pi loads prompt templates from:
+Pi 从以下位置加载提示词模板：
 
-- Global: `~/.pi/agent/prompts/*.md`
-- Project: `.pi/prompts/*.md` (only after the project is trusted)
-- Packages: `prompts/` directories or `pi.prompts` entries in `package.json`
-- Settings: `prompts` array with files or directories
-- CLI: `--prompt-template <path>` (repeatable)
+- 全局：`~/.pi/agent/prompts/*.md`
+- 项目：`.pi/prompts/*.md`（仅项目被信任后）
+- 包：`prompts/` 目录或 `package.json` 中的 `pi.prompts` 条目
+- 设置：包含文件或目录的 `prompts` 数组
+- CLI：`--prompt-template <path>`（可重复）
 
-Disable discovery with `--no-prompt-templates`.
+使用 `--no-prompt-templates` 禁用发现。
 
-## Format
+## 格式
 
 ```markdown
 ---
-description: Review staged git changes
+description: 审查暂存的 git 变更
 ---
-Review the staged changes (`git diff --cached`). Focus on:
-- Bugs and logic errors
-- Security issues
-- Error handling gaps
+审查暂存的变更（`git diff --cached`）。重点关注：
+- Bug 和逻辑错误
+- 安全问题
+- 错误处理遗漏
 ```
 
-- The filename becomes the command name. `review.md` becomes `/review`.
-- `description` is optional. If missing, the first non-empty line is used.
-- `argument-hint` is optional. When set, the hint is displayed before the description in the autocomplete dropdown.
+- 文件名即命令名。`review.md` 变为 `/review`。
+- `description` 可选。缺失时使用首个非空行。
+- `argument-hint` 可选。设置后，在自动补全下拉框中显示在描述之前。
 
-### Argument Hints
+### 参数提示
 
-Use `argument-hint` in frontmatter to show expected arguments in autocomplete. Use `<angle brackets>` for required arguments and `[square brackets]` for optional ones:
+在 frontmatter 中使用 `argument-hint` 在自动补全中展示预期参数。使用 `<尖括号>` 表示必需参数，`[方括号]` 表示可选参数：
 
 ```markdown
 ---
-description: Review PRs from URLs with structured issue and code analysis
+description: 通过 URL 审查 PR，包含结构化问题和代码分析
 argument-hint: "<PR-URL>"
 ---
 ```
 
-This renders in the autocomplete dropdown as:
+在自动补全下拉框中渲染为：
 
 ```
-→ pr   <PR-URL>       — Review PRs from URLs with structured issue and code analysis
-  is   <issue>        — Analyze GitHub issues (bugs or feature requests)
-  wr   [instructions] — Finish the current task end-to-end
-  cl   — Audit changelog entries before release
+→ pr   <PR-URL>       — 通过 URL 审查 PR，包含结构化问题和代码分析
+  is   <issue>        — 分析 GitHub issues（Bug 或功能请求）
+  wr   [instructions] — 端到端完成当前任务
+  cl   — 发布前审计变更日志条目
 ```
 
-## Usage
+## 使用方法
 
-Type `/` followed by the template name in the editor. Autocomplete shows available templates with descriptions.
+在编辑器中键入 `/` 后跟模板名称。自动补全会显示可用模板及其描述。
 
 ```
-/review                           # Expands review.md
-/component Button                 # Expands with argument
-/component Button "click handler" # Multiple arguments
+/review                           # 展开 review.md
+/component Button                 # 带参数展开
+/component Button "click handler" # 多参数
 ```
 
-## Arguments
+## 参数
 
-Templates support positional arguments, defaults, and simple slicing:
+模板支持位置参数、默认值和简单切片：
 
-- `$1`, `$2`, ... positional args
-- `$@` or `$ARGUMENTS` for all args joined
-- `${1:-default}` uses arg 1 when present/non-empty, otherwise `default`
-- `${@:N}` for args from the Nth position (1-indexed)
-- `${@:N:L}` for `L` args starting at N
+- `$1`, `$2`, ... 位置参数
+- `$@` 或 `$ARGUMENTS` 表示所有参数拼接
+- `${1:-default}` 在参数 1 存在/非空时使用，否则使用 `default`
+- `${@:N}` 表示从第 N 个位置开始的参数（从 1 开始计数）
+- `${@:N:L}` 表示从 N 开始的 L 个参数
 
-Example:
+示例：
 
 ```markdown
 ---
-description: Create a component
+description: 创建一个组件
 ---
-Create a React component named $1 with features: $@
+创建一个名为 $1 的 React 组件，功能包括：$@
 ```
 
-Default values are useful for optional arguments:
+默认值对可选参数很有用：
 
 ```markdown
-Summarize the current state in ${1:-7} bullet points.
+用 ${1:-7} 个要点总结当前状态。
 ```
 
-Usage: `/component Button "onClick handler" "disabled support"`
+用法：`/component Button "onClick handler" "disabled support"`
 
-## Loading Rules
+## 加载规则
 
-- Template discovery in `prompts/` is non-recursive.
-- If you want templates in subdirectories, add them explicitly via `prompts` settings or a package manifest.
+- `prompts/` 中的模板发现是非递归的。
+- 如需子目录中的模板，请通过 `prompts` 设置或包清单显式添加。
