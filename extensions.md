@@ -236,9 +236,9 @@ export default async function (pi: ExtensionAPI) {
 ```
 ~/.pi/agent/extensions/
 └── my-extension/
-    ├── index.ts        # Entry point (exports default function)
-    ├── tools.ts        # Helper module
-    └── utils.ts        # Helper module
+    ├── index.ts        # 入口点（导出默认函数）
+    ├── tools.ts        # 辅助模块
+    └── utils.ts        # 辅助模块
 ```
 
 **带依赖的包** - 用于需要 npm 包的扩展：
@@ -246,9 +246,9 @@ export default async function (pi: ExtensionAPI) {
 ```
 ~/.pi/agent/extensions/
 └── my-extension/
-    ├── package.json    # Declares dependencies and entry points
+    ├── package.json    # 声明依赖和入口点
     ├── package-lock.json
-    ├── node_modules/   # After npm install
+    ├── node_modules/   # npm install 之后
     └── src/
         └── index.ts
 ```
@@ -1433,7 +1433,7 @@ pi.appendEntry("status-card", { title: "Indexed files", count: 17 });
 pi.on("session_start", async (_event, ctx) => {
   for (const entry of ctx.sessionManager.getEntries()) {
     if (entry.type === "custom" && entry.customType === "my-state") {
-      // Reconstruct from entry.data
+      // 从 entry.data 重建
     }
   }
 });
@@ -2392,17 +2392,17 @@ const currentEditor = ctx.ui.getEditorComponent();
 ctx.ui.setEditorComponent((tui, theme, keybindings) =>
   new WrappedEditor(tui, theme, keybindings, currentEditor?.(tui, theme, keybindings))
 );
-ctx.ui.setEditorComponent(undefined);  // Restore default editor
+ctx.ui.setEditorComponent(undefined);  // 恢复默认编辑器
 
-// Theme management (see themes.md for creating themes)
+// 主题管理（参见 themes.md 了解如何创建主题）
 const themes = ctx.ui.getAllThemes();  // [{ name: "dark", path: "/..." | undefined }, ...]
-const lightTheme = ctx.ui.getTheme("light");  // Load without switching
-const result = ctx.ui.setTheme("light");  // Switch by name
+const lightTheme = ctx.ui.getTheme("light");  // 加载但不切换
+const result = ctx.ui.setTheme("light");  // 按名称切换
 if (!result.success) {
   ctx.ui.notify(`Failed: ${result.error}`, "error");
 }
-ctx.ui.setTheme(lightTheme!);  // Or switch by Theme object
-ctx.ui.theme.fg("accent", "styled text");  // Access current theme
+ctx.ui.setTheme(lightTheme!);  // 或按 Theme 对象切换
+ctx.ui.theme.fg("accent", "styled text");  // 访问当前主题
 ```
 
 自定义工作指示器帧按原样渲染。如需颜色，请自行将颜色添加到帧字符串中，例如使用 `ctx.ui.theme.fg(...)`。
