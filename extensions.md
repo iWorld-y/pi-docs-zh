@@ -1317,21 +1317,21 @@ export default function (pi: ExtensionAPI) {
 
 ### pi.on(event, handler)
 
-Subscribe to events. See [Events](#events) for event types and return values.
+订阅事件。参见 [事件](#events) 了解事件类型和返回值。
 
 ### pi.registerTool(definition)
 
-Register a custom tool callable by the LLM. See [Custom Tools](#custom-tools) for full details.
+注册 LLM 可调用的自定义工具。详见 [自定义工具](#custom-tools)。
 
-`pi.registerTool()` works both during extension load and after startup. You can call it inside `session_start`, command handlers, or other event handlers. New tools are refreshed immediately in the same session, so they appear in `pi.getAllTools()` and are callable by the LLM without `/reload`.
+`pi.registerTool()` 在扩展加载期间和启动后均可调用。可以在 `session_start`、命令处理器或其他事件处理器中调用。新工具会在同一会话中立即刷新，因此会出现在 `pi.getAllTools()` 中，LLM 无需 `/reload` 即可调用。
 
-Use `pi.setActiveTools()` to enable or disable tools (including dynamically added tools) at runtime.
+使用 `pi.setActiveTools()` 可在运行时启用或禁用工具（包括动态添加的工具）。
 
-Use `promptSnippet` to opt a custom tool into a one-line entry in `Available tools`, and `promptGuidelines` to append tool-specific bullets to the default `Guidelines` section when the tool is active.
+使用 `promptSnippet` 可将自定义工具作为单行条目加入默认系统提示的 `Available tools` 部分；使用 `promptGuidelines` 可在工具激活时将工具专属的要点追加到默认 `Guidelines` 部分。
 
-**Important:** `promptGuidelines` bullets are appended flat to the `Guidelines` section with no tool name prefix. Each guideline must name the tool it refers to — avoid "Use this tool when..." because the LLM cannot tell which tool "this" means. Write "Use my_tool when..." instead.
+**重要：** `promptGuidelines` 要点会平铺追加到 `Guidelines` 部分，不带工具名称前缀。每条准则必须指明其引用的工具——避免使用"Use this tool when..."，因为 LLM 无法判断"this"指哪个工具。应写为"Use my_tool when..."。
 
-See [dynamic-tools.ts](../examples/extensions/dynamic-tools.ts) for a full example.
+参见 [dynamic-tools.ts](../examples/extensions/dynamic-tools.ts) 了解完整示例。
 
 ```typescript
 import { Type } from "typebox";
@@ -1372,7 +1372,7 @@ pi.registerTool({
 
 ### pi.sendMessage(message, options?)
 
-Inject a custom message into the session. Custom messages participate in LLM context. For durable TUI-only content that should not be sent to the LLM, use [`pi.appendEntry()`](#piappendentrycustomtype-data) with [`pi.registerEntryRenderer()`](#piregisterentryrenderercustomtype-renderer).
+向会话中注入自定义消息。自定义消息会参与 LLM 上下文。对于不应发送给 LLM 的持久性 TUI 内容，请使用 [`pi.appendEntry()`](#piappendentrycustomtype-data) 配合 [`pi.registerEntryRenderer()`](#piregisterentryrenderercustomtype-renderer)。
 
 ```typescript
 pi.sendMessage({
@@ -1386,16 +1386,16 @@ pi.sendMessage({
 });
 ```
 
-**Options:**
-- `deliverAs` - Delivery mode:
-  - `"steer"` (default) - Queues the message while streaming. Delivered after the current assistant turn finishes executing its tool calls, before the next LLM call.
-  - `"followUp"` - Waits for agent to finish. Delivered only when agent has no more tool calls.
-  - `"nextTurn"` - Queued for next user prompt. Does not interrupt or trigger anything.
-- `triggerTurn: true` - If agent is idle, trigger an LLM response immediately. Only applies to `"steer"` and `"followUp"` modes (ignored for `"nextTurn"`).
+**选项：**
+- `deliverAs` - 投递模式：
+  - `"steer"`（默认）- 流式传输期间排队。在当前助手轮次完成工具调用后、下一次 LLM 调用前投递。
+  - `"followUp"` - 等待 agent 完成。仅在 agent 没有更多工具调用时投递。
+  - `"nextTurn"` - 排队到下一次用户提示。不中断或触发任何操作。
+- `triggerTurn: true` - 如果 agent 空闲，立即触发 LLM 响应。仅适用于 `"steer"` 和 `"followUp"` 模式（`"nextTurn"` 模式忽略此选项）。
 
 ### pi.sendUserMessage(content, options?)
 
-Send a user message to the agent. Unlike `sendMessage()` which sends custom messages, this sends an actual user message that appears as if typed by the user. Always triggers a turn.
+向 agent 发送用户消息。与发送自定义消息的 `sendMessage()` 不同，此方法发送的是实际的用户消息，效果如同用户亲自输入。总会触发一轮对话。
 
 ```typescript
 // Simple text message
@@ -1413,17 +1413,17 @@ pi.sendUserMessage("And then summarize", { deliverAs: "followUp" });
 ```
 
 **Options:**
-- `deliverAs` - Required when agent is streaming:
-  - `"steer"` - Queues the message for delivery after the current assistant turn finishes executing its tool calls
-  - `"followUp"` - Waits for agent to finish all tools
+- `deliverAs` - agent 流式传输时必填：
+  - `"steer"` - 在当前助手轮次完成工具调用后投递
+  - `"followUp"` - 等待 agent 完成所有工具
 
-When not streaming, the message is sent immediately and triggers a new turn. When streaming without `deliverAs`, throws an error.
+未流式传输时，消息会立即发送并触发新一轮对话。流式传输时未指定 `deliverAs` 会抛出错误。
 
-See [send-user-message.ts](../examples/extensions/send-user-message.ts) for a complete example.
+参见 [send-user-message.ts](../examples/extensions/send-user-message.ts) 了解完整示例。
 
 ### pi.appendEntry(customType, data?)
 
-Persist extension data. Custom entries do NOT participate in LLM context. In interactive mode, they can also render inside the chat transcript when paired with `pi.registerEntryRenderer()`.
+持久化扩展数据。自定义条目不参与 LLM 上下文。在交互模式下，配合 `pi.registerEntryRenderer()` 也可在聊天记录中渲染。
 
 ```typescript
 pi.appendEntry("my-state", { count: 42 });
@@ -1441,7 +1441,7 @@ pi.on("session_start", async (_event, ctx) => {
 
 ### pi.setSessionName(name)
 
-Set the session display name (shown in session selector instead of first message).
+设置会话显示名称（在会话选择器中显示，替代首条消息）。
 
 ```typescript
 pi.setSessionName("Refactor auth module");
@@ -1449,7 +1449,7 @@ pi.setSessionName("Refactor auth module");
 
 ### pi.getSessionName()
 
-Get the current session name, if set.
+获取当前会话名称（如果已设置）。
 
 ```typescript
 const name = pi.getSessionName();
@@ -1460,26 +1460,26 @@ if (name) {
 
 ### pi.setLabel(entryId, label)
 
-Set or clear a label on an entry. Labels are user-defined markers for bookmarking and navigation (shown in `/tree` selector).
+设置或清除条目标签。标签是用户定义的标记，用于书签和导航（在 `/tree` 选择器中显示）。
 
 ```typescript
-// Set a label
+// 设置标签
 pi.setLabel(entryId, "checkpoint-before-refactor");
 
-// Clear a label
+// 清除标签
 pi.setLabel(entryId, undefined);
 
-// Read labels via sessionManager
+// 通过 sessionManager 读取标签
 const label = ctx.sessionManager.getLabel(entryId);
 ```
 
-Labels persist in the session and survive restarts. Use them to mark important points (turns, checkpoints) in the conversation tree.
+标签在会话中持久化，重启后仍保留。用于标记对话树中的重要节点（轮次、检查点）。
 
 ### pi.registerCommand(name, options)
 
-Register a command.
+注册命令。
 
-If multiple extensions register the same command name, pi keeps them all and assigns numeric invocation suffixes in load order, for example `/review:1` and `/review:2`.
+如果多个扩展注册了相同的命令名称，pi 会保留所有命令，并按加载顺序分配数字调用后缀，例如 `/review:1` 和 `/review:2`。
 
 ```typescript
 pi.registerCommand("stats", {
@@ -1491,7 +1491,7 @@ pi.registerCommand("stats", {
 });
 ```
 
-Optional: add argument auto-completion for `/command ...`:
+可选：为 `/command ...` 添加参数自动补全：
 
 ```typescript
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
@@ -1512,8 +1512,8 @@ pi.registerCommand("deploy", {
 
 ### pi.getCommands()
 
-Get the slash commands available for invocation via `prompt` in the current session. Includes extension commands, prompt templates, and skill commands.
-The list matches the RPC `get_commands` ordering: extensions first, then templates, then skills.
+获取当前会话中可通过 `prompt` 调用的斜杠命令。包括扩展命令、提示模板和技能命令。
+列表顺序与 RPC `get_commands` 一致：扩展优先，然后是模板，最后是技能。
 
 ```typescript
 const commands = pi.getCommands();
@@ -1521,7 +1521,7 @@ const bySource = commands.filter((command) => command.source === "extension");
 const userScoped = commands.filter((command) => command.sourceInfo.scope === "user");
 ```
 
-Each entry has this shape:
+每个条目具有以下结构：
 
 ```typescript
 {
@@ -1538,18 +1538,17 @@ Each entry has this shape:
 }
 ```
 
-Use `sourceInfo` as the canonical provenance field. Do not infer ownership from command names or from ad hoc path parsing.
+使用 `sourceInfo` 作为规范的来源字段。不要从命令名称或临时路径解析推断所有权。
 
-Built-in interactive commands (like `/model` and `/settings`) are not included here. They are handled only in interactive
-mode and would not execute if sent via `prompt`.
+内置交互命令（如 `/model` 和 `/settings`）不包含在此处。它们仅在交互模式下处理，通过 `prompt` 发送不会执行。
 
 ### pi.registerMessageRenderer(customType, renderer)
 
-Register a custom TUI renderer for custom messages with your `customType`. Custom messages are created with `pi.sendMessage()` and participate in LLM context. See [Custom UI](#custom-ui).
+为指定 `customType` 的自定义消息注册 TUI 渲染器。自定义消息通过 `pi.sendMessage()` 创建，会参与 LLM 上下文。参见 [自定义 UI](#custom-ui)。
 
 ### pi.registerEntryRenderer(customType, renderer)
 
-Register a custom TUI renderer for custom entries with your `customType`. Custom entries are created with `pi.appendEntry()` and do not participate in LLM context.
+为指定 `customType` 的自定义条目注册 TUI 渲染器。自定义条目通过 `pi.appendEntry()` 创建，不参与 LLM 上下文。
 
 ```typescript
 import { Box, Text } from "@earendil-works/pi-tui";
@@ -1569,7 +1568,7 @@ pi.appendEntry("status-card", { title: "Indexed files", count: 17 });
 
 ### pi.registerShortcut(shortcut, options)
 
-Register a keyboard shortcut. See [keybindings.md](keybindings.md) for the shortcut format and built-in keybindings.
+注册键盘快捷键。参见 [keybindings.md](keybindings.md) 了解快捷键格式和内置键绑定。
 
 ```typescript
 pi.registerShortcut("ctrl+shift+p", {
@@ -1582,7 +1581,7 @@ pi.registerShortcut("ctrl+shift+p", {
 
 ### pi.registerFlag(name, options)
 
-Register a CLI flag.
+注册 CLI 标志。
 
 ```typescript
 pi.registerFlag("plan", {
@@ -1599,7 +1598,7 @@ if (pi.getFlag("plan")) {
 
 ### pi.exec(command, args, options?)
 
-Execute a shell command.
+执行 shell 命令。
 
 ```typescript
 const result = await pi.exec("git", ["status"], { signal, timeout: 5000 });
@@ -1608,7 +1607,7 @@ const result = await pi.exec("git", ["status"], { signal, timeout: 5000 });
 
 ### pi.getActiveTools() / pi.getAllTools() / pi.setActiveTools(names)
 
-Manage active tools. This works for both built-in tools and dynamically registered tools. `pi.getActiveTools()` returns the active tool names as `string[]`; `pi.getAllTools()` returns metadata for all configured tools.
+管理活动工具。对内置工具和动态注册的工具均有效。`pi.getActiveTools()` 返回活动工具名称的 `string[]`；`pi.getAllTools()` 返回所有已配置工具的元数据。
 
 ```typescript
 const active = pi.getActiveTools(); // ["read", "bash", ...]
@@ -1628,14 +1627,14 @@ pi.setActiveTools(["read", "bash"]); // Switch to read-only
 
 `pi.getAllTools()` returns `name`, `description`, `parameters`, `promptGuidelines`, and `sourceInfo`.
 
-Typical `sourceInfo.source` values:
-- `builtin` for built-in tools
-- `sdk` for tools passed via `createAgentSession({ customTools })`
-- extension source metadata for tools registered by extensions
+`sourceInfo.source` 的典型值：
+- `builtin` 表示内置工具
+- `sdk` 表示通过 `createAgentSession({ customTools })` 传入的工具
+- 扩展来源元数据表示由扩展注册的工具
 
 ### pi.setModel(model)
 
-Set the current model. Returns `false` if no API key is available for the model. See [models.md](models.md) for configuring custom models.
+设置当前模型。如果模型没有可用的 API 密钥，返回 `false`。参见 [models.md](models.md) 了解自定义模型配置。
 
 ```typescript
 const model = ctx.modelRegistry.find("anthropic", "claude-sonnet-4-5");
@@ -1649,7 +1648,7 @@ if (model) {
 
 ### pi.getThinkingLevel() / pi.setThinkingLevel(level)
 
-Get or set the thinking level. Level is clamped to model capabilities (non-reasoning models always use "off"). Changes emit `thinking_level_select`.
+获取或设置思考级别。级别会被限制在模型能力范围内（非推理模型始终使用"off"）。更改会触发 `thinking_level_select` 事件。
 
 ```typescript
 const current = pi.getThinkingLevel();  // "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -1658,7 +1657,7 @@ pi.setThinkingLevel("high");
 
 ### pi.events
 
-Shared event bus for communication between extensions:
+用于扩展间通信的共享事件总线：
 
 ```typescript
 pi.events.on("my:event", (data) => { ... });
@@ -1667,11 +1666,11 @@ pi.events.emit("my:event", { ... });
 
 ### pi.registerProvider(name, config)
 
-Register or override a model provider dynamically. Useful for proxies, custom endpoints, or team-wide model configurations.
+动态注册或覆盖模型提供商。适用于代理、自定义端点或团队级模型配置。
 
-Calls made during the extension factory function are queued and applied once the runner initialises. Calls made after that — for example from a command handler following a user setup flow — take effect immediately without requiring a `/reload`.
+在扩展工厂函数期间进行的调用会被排队，在运行器初始化时应用。之后的调用（例如来自用户设置流程中的命令处理器）会立即生效，无需 `/reload`。
 
-If you need to discover models from a remote endpoint, prefer an async extension factory over deferring the fetch to `session_start`. pi waits for the factory before startup continues, so the registered models are available immediately, including to `pi --list-models`.
+如果需要从远程端点发现模型，建议使用异步扩展工厂，而不是将获取延迟到 `session_start`。pi 在启动继续前会等待工厂完成，因此注册的模型立即可用，包括对 `pi --list-models`。
 
 ```typescript
 // Register a new provider with custom models
@@ -1722,24 +1721,24 @@ pi.registerProvider("corporate-ai", {
 });
 ```
 
-**Config options:**
-- `name` - Display name for the provider in UI such as `/login`.
-- `baseUrl` - API endpoint URL. Required when defining models.
-- `apiKey` - API key literal, environment interpolation (`$ENV_VAR` or `${ENV_VAR}`), or leading `!command`. Required when defining models (unless `oauth` provided). `$$` escapes `$`, and `$!` escapes a literal `!` without triggering command execution.
-- `api` - API type: `"anthropic-messages"`, `"openai-completions"`, `"openai-responses"`, etc.
-- `headers` - Custom headers to include in requests.
-- `authHeader` - If true, adds `Authorization: Bearer` header automatically.
-- `models` - Array of model definitions. If provided, replaces all existing models for this provider. Model definitions can set `baseUrl` to override the provider endpoint for that model.
-- `oauth` - OAuth provider config for `/login` support. When provided, the provider appears in the login menu.
-- `streamSimple` - Custom streaming implementation for non-standard APIs.
+**配置选项：**
+- `name` - 提供商在 UI 中的显示名称，如 `/login`。
+- `baseUrl` - API 端点 URL。定义模型时为必填。
+- `apiKey` - API 密钥字面量、环境变量插值（`$ENV_VAR` 或 `${ENV_VAR}`）或前导 `!command`。定义模型时为必填（除非提供了 `oauth`）。`$$` 转义 `$`，`$!` 转义字面量 `!` 而不触发命令执行。
+- `api` - API 类型：`"anthropic-messages"`、`"openai-completions"`、`"openai-responses"` 等。
+- `headers` - 请求中包含的自定义头部。
+- `authHeader` - 如果为 true，自动添加 `Authorization: Bearer` 头部。
+- `models` - 模型定义数组。如果提供，替换该提供商的所有现有模型。模型定义可以设置 `baseUrl` 以覆盖该模型的提供商端点。
+- `oauth` - 用于 `/login` 支持的 OAuth 提供商配置。提供时，提供商出现在登录菜单中。
+- `streamSimple` - 用于非标准 API 的自定义流式实现。
 
-See [custom-provider.md](custom-provider.md) for advanced topics: custom streaming APIs, OAuth details, model definition reference.
+参见 [custom-provider.md](custom-provider.md) 了解高级主题：自定义流式 API、OAuth 详情、模型定义参考。
 
 ### pi.unregisterProvider(name)
 
-Remove a previously registered provider and its models. Built-in models that were overridden by the provider are restored. Has no effect if the provider was not registered.
+移除之前注册的提供商及其模型。被该提供商覆盖的内置模型会被恢复。如果提供商未注册则无效果。
 
-Like `registerProvider`, this takes effect immediately when called after the initial load phase, so a `/reload` is not required.
+与 `registerProvider` 一样，在初始加载阶段后调用会立即生效，无需 `/reload`。
 
 ```typescript
 pi.registerCommand("my-setup-teardown", {
@@ -1750,9 +1749,9 @@ pi.registerCommand("my-setup-teardown", {
 });
 ```
 
-## State Management
+## 状态管理
 
-Extensions with state should store it in tool result `details` for proper branching support:
+有状态的扩展应将其存储在工具结果的 `details` 中，以支持正确的分支处理：
 
 ```typescript
 export default function (pi: ExtensionAPI) {
@@ -1784,19 +1783,19 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-## Custom Tools
+## 自定义工具
 
-Register tools the LLM can call via `pi.registerTool()`. Tools appear in the system prompt and can have custom rendering.
+通过 `pi.registerTool()` 注册 LLM 可调用的工具。工具会出现在系统提示中，并可以拥有自定义渲染。
 
-Use `promptSnippet` for a short one-line entry in the `Available tools` section in the default system prompt. If omitted, custom tools are left out of that section.
+使用 `promptSnippet` 在默认系统提示的 `Available tools` 部分中添加简短的单行条目。如果省略，自定义工具将不会出现在该部分。
 
-Use `promptGuidelines` to add tool-specific bullets to the default system prompt `Guidelines` section. These bullets are included only while the tool is active (for example, after `pi.setActiveTools([...])`).
+使用 `promptGuidelines` 在默认系统提示的 `Guidelines` 部分添加工具特定的要点。这些要点仅在工具处于活动状态时（例如，在调用 `pi.setActiveTools([...])` 之后）才会被包含。
 
-**Important:** `promptGuidelines` bullets are appended flat to the `Guidelines` section with no tool name prefix or grouping. Each guideline must name the tool it refers to — avoid "Use this tool when..." because the LLM cannot tell which tool "this" means. Write "Use my_tool when..." instead.
+**重要：** `promptGuidelines` 要点平铺附加到 `Guidelines` 部分，没有工具名称前缀或分组。每条指南必须指明其所指的工具名称——避免"使用此工具时……"，因为 LLM 无法判断"此"指哪个工具。应写"使用 my_tool 时……"。
 
-Note: Some models are idiots and include the @ prefix in tool path arguments. Built-in tools strip a leading @ before resolving paths. If your custom tool accepts a path, normalize a leading @ as well.
+注意：有些模型比较愚蠢，在工具路径参数中包含 @ 前缀。内置工具在解析路径前会去除前导 @。如果你的自定义工具接受路径参数，也应同样去除前导 @。
 
-If your custom tool mutates files, use `withFileMutationQueue()` so it participates in the same per-file queue as built-in `edit` and `write`. This matters because tool calls run in parallel by default. Without the queue, two tools can read the same old file contents, compute different updates, and then whichever write lands last overwrites the other.
+如果你的自定义工具会修改文件，请使用 `withFileMutationQueue()`，使其与内置的 `edit` 和 `write` 同一个每文件队列。这很重要，因为工具调用默认是并行执行的。没有队列的情况下，两个工具可能读取相同的旧文件内容，计算不同的更新，然后后写入的那个会覆盖前面的更改。
 
 示例故障场景：你的自定义工具编辑 `foo.ts`，而内置的 `edit` 工具也在同一个助手轮次中修改 `foo.ts`。如果你的工具没有参与队列，两者可能同时读取原始的 `foo.ts`，分别应用各自的修改，最终后写入的那一个会覆盖前者的变更。
 
@@ -2483,7 +2482,7 @@ if (result) {
 - `keybindings` - 应用键位管理器（用于检查快捷键）
 - `done(value)` - 调用以关闭组件并返回值
 
-See [tui.md](tui.md) for the full component API.
+参见 [tui.md](tui.md) 了解完整的组件 API。
 
 #### 覆盖模式（Overlay Mode，实验性）
 
