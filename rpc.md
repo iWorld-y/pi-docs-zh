@@ -1468,3 +1468,673 @@ process.on("SIGINT", () => {
     agent.stdin.write(JSON.stringify({ type: "abort" }) + "\n");
 });
 ```
+
+## 事件（Events）
+
+在 agent 运行期间，事件以 JSON 行（JSON lines）的形式流式输出到 stdout。事件**不包含** `id` 字段（只有响应才包含）。
+
+### 事件类型
+
+| 事件 | 描述 |
+|-------|-------------|
+| `agent_start` | Agent 开始处理 |
+| `agent_end` | Agent 完成（包含所有生成的消息） |
+| `turn_start` | 新一轮（turn）开始 |
+| `turn_end` | 本轮完成（包含 assistant 消息和工具结果） |
+| `message_start` | 消息开始 |
+| `message_update` | 流式更新（文本/思考/toolcall 增量） |
+| `message_end` | 消息完成 |
+| `tool_execution_start` | 工具开始执行 |
+| `tool_execution_update` | 工具执行进度（流式输出） |
+| `tool_execution_end` | 工具执行完成 |
+| `queue_update` | 待处理的 steering/follow-up 队列发生变化 |
+| `compaction_start` | 压缩（compaction）开始 |
+| `compaction_end` | 压缩完成 |
+| `auto_retry_start` | 自动重试开始（瞬态错误后） |
+| `auto_retry_end` | 自动重试完成（成功或最终失败） |
+| `extension_error` | 扩展抛出错误 |
+
+### agent_start
+
+当 agent 开始处理 prompt 时触发。
+
+```json
+{"type": "agent_start"}
+```
+
+### agent_end
+
+当 agent 完成时触发。包含本次运行中生成的所有消息。
+
+```json
+{
+  "type": "agent_end",
+  "messages": [...]
+}
+```
+
+### turn_start / turn_end
+
+一轮（turn）由一次 assistant 响应以及由此产生的所有工具调用和结果组成。
+
+```json
+{"type": "turn_start"}
+```
+
+```json
+{
+  "type": "turn_end",
+  "message": {...},
+  "toolResults": [...]
+}
+```
+
+### message_start / message_end
+
+当消息开始和完成时触发。`message` 字段包含一个 `AgentMessage`。
+
+```json
+{"type": "message_start", "message": {...}}
+{"type": "message_end", "message": {...}}
+```
+
+### message_update（流式）
+
+在 assistant 消息流式传输期间触发。包含部分消息和流式增量事件。
+
+```json
+{
+  "type": "message_update",
+  "message": {...},
+  "assistantMessageEvent": {
+    "type": "text_delta",
+    "contentIndex": 0,
+    "delta": "Hello ",
+    "partial": {...}
+  }
+}
+```
+
+`assistantMessageEvent` 字段包含以下增量类型之一：
+
+| 类型 | 描述 |
+|------|-------------|
+| `start` | 消息生成开始 |
+| `text_start` | 文本内容块开始 |
+| `text_delta` | 文本内容片段 |
+| `text_end` | 文本内容块结束 |
+| `thinking_start` | 思考块开始 |
+| `thinking_delta` | 思考内容片段 |
+| `thinking_end` | 思考块结束 |
+| `toolcall_start` | 工具调用开始 |
+| `toolcall_delta` | 工具调用参数片段 |
+| `toolcall_end` | 工具调用结束（包含完整的 `toolCall` 对象） |
+| `done` | 消息完成（原因：`"stop"`、`"length"`、`"toolUse"`） |
+| `error` | 发生错误（原因：`"aborted"`、`"error"`） |
+
+流式传输文本响应示例：
+```json
+{"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{...}}}
+{"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello","partial":{...}}}
+{"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" world","partial":{...}}}
+{"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"Hello world","partial":{...}}}
+```
+
+### tool_execution_start / tool_execution_update / tool_execution_end
+
+当工具开始执行、流式传输进度以及执行完成时触发。
+
+```json
+{
+  "type": "tool_execution_start",
+  "toolCallId": "call_abc123",
+  "toolName": "bash",
+  "args": {"command": "ls -la"}
+}
+```
+
+执行期间，`tool_execution_update` 事件流式传输部分结果（例如 bash 输出到达时即触发）：
+
+```json
+{
+  "type": "tool_execution_update",
+  "toolCallId": "call_abc123",
+  "toolName": "bash",
+  "args": {"command": "ls -la"},
+  "partialResult": {
+    "content": [{"type": "text", "text": "partial output so far..."}],
+    "details": {"truncation": null, "fullOutputPath": null}
+  }
+}
+```
+
+完成时：
+
+```json
+{
+  "type": "tool_execution_end",
+  "toolCallId": "call_abc123",
+  "toolName": "bash",
+  "result": {
+    "content": [{"type": "text", "text": "total 48\n..."}],
+    "details": {...}
+  },
+  "isError": false
+}
+```
+
+使用 `toolCallId` 来关联事件。`tool_execution_update` 中的 `partialResult` 包含截至目前累积的输出（而不仅仅是增量），客户端只需在每次更新时替换显示内容即可。
+
+### queue_update
+
+当待处理的 steering 或 follow-up 队列发生变化时触发。
+
+```json
+{
+  "type": "queue_update",
+  "steering": ["Focus on error handling"],
+  "followUp": ["After that, summarize the result"]
+}
+```
+
+### compaction_start / compaction_end
+
+当压缩（compaction）运行时触发，无论是手动还是自动。
+
+```json
+{"type": "compaction_start", "reason": "threshold"}
+```
+
+`reason` 字段为 `"manual"`、`"threshold"` 或 `"overflow"`。
+
+```json
+{
+  "type": "compaction_end",
+  "reason": "threshold",
+  "result": {
+    "summary": "Summary of conversation...",
+    "firstKeptEntryId": "abc123",
+    "tokensBefore": 150000,
+    "estimatedTokensAfter": 32000,
+    "details": {}
+  },
+  "aborted": false,
+  "willRetry": false
+}
+```
+
+如果 `reason` 为 `"overflow"` 且压缩成功，则 `willRetry` 为 `true`，agent 将自动重试该 prompt。
+
+如果压缩被中止，则 `result` 为 `null`，`aborted` 为 `true`。
+
+如果压缩失败（例如 API 配额超限），则 `result` 为 `null`，`aborted` 为 `false`，`errorMessage` 包含错误描述。
+
+### auto_retry_start / auto_retry_end
+
+当瞬态错误（过载、速率限制、5xx）触发自动重试时触发。
+
+```json
+{
+  "type": "auto_retry_start",
+  "attempt": 1,
+  "maxAttempts": 3,
+  "delayMs": 2000,
+  "errorMessage": "529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"
+}
+```
+
+```json
+{
+  "type": "auto_retry_end",
+  "success": true,
+  "attempt": 2
+}
+```
+
+最终失败（超出最大重试次数）时：
+```json
+{
+  "type": "auto_retry_end",
+  "success": false,
+  "attempt": 3,
+  "finalError": "529 overloaded_error: Overloaded"
+}
+```
+
+### extension_error
+
+当扩展抛出错误时触发。
+
+```json
+{
+  "type": "extension_error",
+  "extensionPath": "/path/to/extension.ts",
+  "event": "tool_call",
+  "error": "Error message..."
+}
+```
+
+## 扩展 UI 协议（Extension UI Protocol）
+
+扩展可以通过 `ctx.ui.select()`、`ctx.ui.confirm()` 等方法请求用户交互。在 RPC 模式下，这些方法被转换为基于基础命令/事件流之上的请求/响应子协议。
+
+扩展 UI 方法分为两类：
+
+- **对话框方法**（Dialog methods，包括 `select`、`confirm`、`input`、`editor`）：在 stdout 上发出 `extension_ui_request`，并阻塞直到客户端在 stdin 上返回具有匹配 `id` 的 `extension_ui_response`。
+- **即发即忘方法**（Fire-and-forget methods，包括 `notify`、`setStatus`、`setWidget`、`setTitle`、`set_editor_text`）：在 stdout 上发出 `extension_ui_request`，但不期待响应。客户端可以显示该信息或忽略它。
+
+如果对话框方法包含 `timeout` 字段，代理侧将在超时到期时自动使用默认值进行解析。客户端无需跟踪超时。
+
+由于某些 `ExtensionUIContext` 方法需要直接访问 TUI，因此在 RPC 模式下不受支持或功能降级：
+- `custom()` 返回 `undefined`
+- `setWorkingMessage()`、`setWorkingIndicator()`、`setFooter()`、`setHeader()`、`setEditorComponent()`、`setToolsExpanded()` 为空操作（no-op）
+- `getEditorText()` 返回 `""`
+- `getToolsExpanded()` 返回 `false`
+- `pasteToEditor()` 委托给 `setEditorText()`（无粘贴/折叠处理）
+- `getAllThemes()` 返回 `[]`
+- `getTheme()` 返回 `undefined`
+- `setTheme()` 返回 `{ success: false, error: "..." }`
+
+注意：在 RPC 模式下，`ctx.mode` 为 `"rpc"`，`ctx.hasUI` 为 `true`，因为对话框方法和即发即忘方法通过扩展 UI 子协议是可功能的。使用 `ctx.mode === "tui"` 来保护需要真实终端的 TUI 特有功能，例如 `custom()`。
+
+### 扩展 UI 请求（stdout）
+
+所有请求都具有 `type: "extension_ui_request"`、唯一的 `id` 和 `method` 字段。
+
+#### select
+
+提示用户从列表中选择。带有 `timeout` 字段的对话框方法以毫秒为单位包含超时时间；如果客户端未及时响应，agent 将自动以 `undefined` 解析。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-1",
+  "method": "select",
+  "title": "Allow dangerous command?",
+  "options": ["Allow", "Block"],
+  "timeout": 10000
+}
+```
+
+预期响应：`extension_ui_response`，包含 `value`（选中的选项字符串）或 `cancelled: true`。
+
+#### confirm
+
+提示用户进行是/否确认。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-2",
+  "method": "confirm",
+  "title": "Clear session?",
+  "message": "All messages will be lost.",
+  "timeout": 5000
+}
+```
+
+预期响应：`extension_ui_response`，包含 `confirmed: true/false` 或 `cancelled: true`。
+
+#### input
+
+提示用户输入自由格式文本。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-3",
+  "method": "input",
+  "title": "Enter a value",
+  "placeholder": "type something..."
+}
+```
+
+预期响应：`extension_ui_response`，包含 `value`（输入的文本）或 `cancelled: true`。
+
+#### editor
+
+打开一个多行文本编辑器，可带预填充内容。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-4",
+  "method": "editor",
+  "title": "Edit some text",
+  "prefill": "Line 1\nLine 2\nLine 3"
+}
+```
+
+预期响应：`extension_ui_response`，包含 `value`（编辑后的文本）或 `cancelled: true`。
+
+#### notify
+
+显示通知。即发即忘，无需响应。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-5",
+  "method": "notify",
+  "message": "Command blocked by user",
+  "notifyType": "warning"
+}
+```
+
+`notifyType` 字段为 `"info"`、`"warning"` 或 `"error"`。如果省略，默认为 `"info"`。
+
+#### setStatus
+
+在页脚/状态栏中设置或清除状态条目。即发即忘。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-6",
+  "method": "setStatus",
+  "statusKey": "my-ext",
+  "statusText": "Turn 3 running..."
+}
+```
+
+发送 `statusText: undefined`（或省略）以清除该键对应的状态条目。
+
+#### setWidget
+
+设置或清除显示在编辑器上方或下方的 widget（文本行块）。即发即忘。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-7",
+  "method": "setWidget",
+  "widgetKey": "my-ext",
+  "widgetLines": ["--- My Widget ---", "Line 1", "Line 2"],
+  "widgetPlacement": "aboveEditor"
+}
+```
+
+发送 `widgetLines: undefined`（或省略）以清除 widget。`widgetPlacement` 字段为 `"aboveEditor"`（默认）或 `"belowEditor"`。RPC 模式仅支持字符串数组；组件工厂将被忽略。
+
+#### setTitle
+
+设置终端窗口/标签页标题。即发即忘。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-8",
+  "method": "setTitle",
+  "title": "pi - my project"
+}
+```
+
+#### set_editor_text
+
+设置输入编辑器中的文本。即发即忘。
+
+```json
+{
+  "type": "extension_ui_request",
+  "id": "uuid-9",
+  "method": "set_editor_text",
+  "text": "prefilled text for the user"
+}
+```
+
+### 扩展 UI 响应（stdin）
+
+仅对对话框方法（`select`、`confirm`、`input`、`editor`）发送响应。`id` 必须与请求匹配。
+
+#### 值响应（select、input、editor）
+
+```json
+{"type": "extension_ui_response", "id": "uuid-1", "value": "Allow"}
+```
+
+#### 确认响应（confirm）
+
+```json
+{"type": "extension_ui_response", "id": "uuid-2", "confirmed": true}
+```
+
+#### 取消响应（任意对话框）
+
+关闭任意对话框方法。扩展将收到 `undefined`（对于 select/input/editor）或 `false`（对于 confirm）。
+
+```json
+{"type": "extension_ui_response", "id": "uuid-3", "cancelled": true}
+```
+
+## 错误处理（Error Handling）
+
+失败的命令返回带有 `success: false` 的响应：
+
+```json
+{
+  "type": "response",
+  "command": "set_model",
+  "success": false,
+  "error": "Model not found: invalid/model"
+}
+```
+
+解析错误：
+
+```json
+{
+  "type": "response",
+  "command": "parse",
+  "success": false,
+  "error": "Failed to parse command: Unexpected token..."
+}
+```
+
+## 类型（Types）
+
+源文件：
+- [`packages/ai/src/types.ts`](../../ai/src/types.ts) - `Model`、`UserMessage`、`AssistantMessage`、`ToolResultMessage`
+- [`packages/agent/src/types.ts`](../../agent/src/types.ts) - `AgentMessage`、`AgentEvent`
+- [`src/core/messages.ts`](../src/core/messages.ts) - `BashExecutionMessage`
+- [`src/modes/rpc/rpc-types.ts`](../src/modes/rpc/rpc-types.ts) - RPC 命令/响应类型、扩展 UI 请求/响应类型
+
+### Model
+
+```json
+{
+  "id": "claude-sonnet-4-20250514",
+  "name": "Claude Sonnet 4",
+  "api": "anthropic-messages",
+  "provider": "anthropic",
+  "baseUrl": "https://api.anthropic.com",
+  "reasoning": true,
+  "input": ["text", "image"],
+  "contextWindow": 200000,
+  "maxTokens": 16384,
+  "cost": {
+    "input": 3.0,
+    "output": 15.0,
+    "cacheRead": 0.3,
+    "cacheWrite": 3.75
+  }
+}
+```
+
+### UserMessage
+
+```json
+{
+  "role": "user",
+  "content": "Hello!",
+  "timestamp": 1733234567890,
+  "attachments": []
+}
+```
+
+`content` 字段可以是字符串，也可以是 `TextContent`/`ImageContent` 块的数组。
+
+### AssistantMessage
+
+```json
+{
+  "role": "assistant",
+  "content": [
+    {"type": "text", "text": "Hello! How can I help?"},
+    {"type": "thinking", "thinking": "User is greeting me..."},
+    {"type": "toolCall", "id": "call_123", "name": "bash", "arguments": {"command": "ls"}}
+  ],
+  "api": "anthropic-messages",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514",
+  "usage": {
+    "input": 100,
+    "output": 50,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "cost": {"input": 0.0003, "output": 0.00075, "cacheRead": 0, "cacheWrite": 0, "total": 0.00105}
+  },
+  "stopReason": "stop",
+  "timestamp": 1733234567890
+}
+```
+
+停止原因：`"stop"`、`"length"`、`"toolUse"`、`"error"`、`"aborted"`
+
+### ToolResultMessage
+
+```json
+{
+  "role": "toolResult",
+  "toolCallId": "call_123",
+  "toolName": "bash",
+  "content": [{"type": "text", "text": "total 48\ndrwxr-xr-x ..."}],
+  "isError": false,
+  "timestamp": 1733234567890
+}
+```
+
+### BashExecutionMessage
+
+由 `bash` RPC 命令创建（非 LLM 工具调用）：
+
+```json
+{
+  "role": "bashExecution",
+  "command": "ls -la",
+  "output": "total 48\ndrwxr-xr-x ...",
+  "exitCode": 0,
+  "cancelled": false,
+  "truncated": false,
+  "fullOutputPath": null,
+  "timestamp": 1733234567890
+}
+```
+
+### Attachment
+
+```json
+{
+  "id": "img1",
+  "type": "image",
+  "fileName": "photo.jpg",
+  "mimeType": "image/jpeg",
+  "size": 102400,
+  "content": "base64-encoded-data...",
+  "extractedText": null,
+  "preview": null
+}
+```
+
+## 示例：基础客户端（Python）
+
+```python
+import subprocess
+import json
+
+proc = subprocess.Popen(
+    ["pi", "--mode", "rpc", "--no-session"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    text=True
+)
+
+def send(cmd):
+    proc.stdin.write(json.dumps(cmd) + "\n")
+    proc.stdin.flush()
+
+def read_events():
+    for line in proc.stdout:
+        yield json.loads(line)
+
+# Send prompt
+send({"type": "prompt", "message": "Hello!"})
+
+# Process events
+for event in read_events():
+    if event.get("type") == "message_update":
+        delta = event.get("assistantMessageEvent", {})
+        if delta.get("type") == "text_delta":
+            print(delta["delta"], end="", flush=True)
+    
+    if event.get("type") == "agent_end":
+        print()
+        break
+```
+
+## 示例：交互式客户端（Node.js）
+
+参见 [`test/rpc-example.ts`](../test/rpc-example.ts) 获取完整的交互式示例，或参见 [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts) 获取类型化客户端实现。
+
+有关处理扩展 UI 协议的完整示例，请参见 [`examples/rpc-extension-ui.ts`](../examples/rpc-extension-ui.ts)，该示例与 [`examples/extensions/rpc-demo.ts`](../examples/extensions/rpc-demo.ts) 扩展配合使用。
+
+```javascript
+const { spawn } = require("child_process");
+const { StringDecoder } = require("string_decoder");
+
+const agent = spawn("pi", ["--mode", "rpc", "--no-session"]);
+
+function attachJsonlReader(stream, onLine) {
+    const decoder = new StringDecoder("utf8");
+    let buffer = "";
+
+    stream.on("data", (chunk) => {
+        buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
+
+        while (true) {
+            const newlineIndex = buffer.indexOf("\n");
+            if (newlineIndex === -1) break;
+
+            let line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line.endsWith("\r")) line = line.slice(0, -1);
+            onLine(line);
+        }
+    });
+
+    stream.on("end", () => {
+        buffer += decoder.end();
+        if (buffer.length > 0) {
+            onLine(buffer.endsWith("\r") ? buffer.slice(0, -1) : buffer);
+        }
+    });
+}
+
+attachJsonlReader(agent.stdout, (line) => {
+    const event = JSON.parse(line);
+
+    if (event.type === "message_update") {
+        const { assistantMessageEvent } = event;
+        if (assistantMessageEvent.type === "text_delta") {
+            process.stdout.write(assistantMessageEvent.delta);
+        }
+    }
+});
+
+// Send prompt
+agent.stdin.write(JSON.stringify({ type: "prompt", message: "Hello" }) + "\n");
+
+// Abort on Ctrl+C
+process.on("SIGINT", () => {
+    agent.stdin.write(JSON.stringify({ type: "abort" }) + "\n");
+});
+```
