@@ -1,173 +1,173 @@
-# RPC Mode
+# RPC 模式
 
-RPC mode enables headless operation of the coding agent via a JSON protocol over stdin/stdout. This is useful for embedding the agent in other applications, IDEs, or custom UIs.
+RPC 模式通过 stdin/stdout 上的 JSON 协议实现编码代理（coding agent）的无头（headless）运行。这适用于将代理嵌入到其他应用程序、IDE 或自定义 UI 中。
 
-**Note for Node.js/TypeScript users**: If you're building a Node.js application, consider using `AgentSession` directly from `@earendil-works/pi-coding-agent` instead of spawning a subprocess. See [`src/core/agent-session.ts`](../src/core/agent-session.ts) for the API. For a subprocess-based TypeScript client, see [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts).
+**Node.js/TypeScript 用户注意**：如果你正在构建 Node.js 应用程序，建议直接使用 `@earendil-works/pi-coding-agent` 中的 `AgentSession`，而不是生成子进程。API 参见 [`src/core/agent-session.ts`](../src/core/agent-session.ts)。如需基于子进程的 TypeScript 客户端，参见 [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts)。
 
-## Starting RPC Mode
+## 启动 RPC 模式
 
 ```bash
 pi --mode rpc [options]
 ```
 
-Common options:
-- `--provider <name>`: Set the LLM provider (anthropic, openai, google, etc.)
-- `--model <pattern>`: Model pattern or ID (supports `provider/id` and optional `:<thinking>`)
-- `--name <name>` / `-n <name>`: Set the session display name at startup
-- `--no-session`: Disable session persistence
-- `--session-dir <path>`: Custom session storage directory
+常用选项：
+- `--provider <name>`：设置 LLM 提供商（anthropic、openai、google 等）
+- `--model <pattern>`：模型模式或 ID（支持 `provider/id` 格式及可选的 `:<thinking>`）
+- `--name <name>` / `-n <name>`：在启动时设置会话显示名称
+- `--no-session`：禁用会话持久化
+- `--session-dir <path>`：自定义会话存储目录
 
-## Protocol Overview
+## 协议概述
 
-- **Commands**: JSON objects sent to stdin, one per line
-- **Responses**: JSON objects with `type: "response"` indicating command success/failure
-- **Events**: Agent events streamed to stdout as JSON lines
+- **命令（Commands）**：发送到 stdin 的 JSON 对象，每行一条
+- **响应（Responses）**：带有 `type: "response"` 的 JSON 对象，表示命令成功或失败
+- **事件（Events）**：作为 JSON 行流式传输到 stdout 的代理事件
 
-All commands support an optional `id` field for request/response correlation. If provided, the corresponding response will include the same `id`.
+所有命令都支持可选的 `id` 字段，用于请求/响应关联。如果提供了 `id`，对应的响应将包含相同的 `id`。
 
-### Framing
+### 帧定界（Framing）
 
-RPC mode uses strict JSONL semantics with LF (`\n`) as the only record delimiter.
+RPC 模式使用严格的 JSONL 语义，以 LF（`\n`）作为唯一的记录分隔符。
 
-This matters for clients:
-- Split records on `\n` only
-- Accept optional `\r\n` input by stripping a trailing `\r`
-- Do not use generic line readers that treat Unicode separators as newlines
+这对客户端有重要影响：
+- 仅按 `\n` 分割记录
+- 接受可选的 `\r\n` 输入，通过剥离末尾的 `\r` 实现
+- 不要使用将 Unicode 分隔符视为换行符的通用行读取器
 
-In particular, Node `readline` is not protocol-compliant for RPC mode because it also splits on `U+2028` and `U+2029`, which are valid inside JSON strings.
+特别说明，Node 的 `readline` 在 RPC 模式中不符合协议规范，因为它还会在 `U+2028` 和 `U+2029` 处分割，而这两个字符在 JSON 字符串中是合法的。
 
-## Commands
+## 命令
 
-### Prompting
+### 提示（Prompting）
 
 #### prompt
 
-Send a user prompt to the agent. The command response is emitted after the prompt is accepted, queued, or handled. Events continue streaming asynchronously after acceptance.
+向代理发送用户提示。命令响应在提示被接受、排队或处理后发出。接受后事件继续异步流式传输。
 
 ```json
 {"id": "req-1", "type": "prompt", "message": "Hello, world!"}
 ```
 
-With images:
+带图片：
 ```json
 {"type": "prompt", "message": "What's in this image?", "images": [{"type": "image", "data": "base64-encoded-data", "mimeType": "image/png"}]}
 ```
 
-**During streaming**: If the agent is already streaming, you must specify `streamingBehavior` to queue the message:
+**流式传输期间**：如果代理正在流式传输，你必须指定 `streamingBehavior` 来排队消息：
 
 ```json
 {"type": "prompt", "message": "New instruction", "streamingBehavior": "steer"}
 ```
 
-- `"steer"`: Queue the message while the agent is running. It is delivered after the current assistant turn finishes executing its tool calls, before the next LLM call.
-- `"followUp"`: Wait until the agent finishes. Message is delivered only when agent stops.
+- `"steer"`：在代理运行期间排队消息。在当前助手轮次完成执行其工具调用之后、下一次 LLM 调用之前投递。
+- `"followUp"`：等待代理完成。仅在代理停止时投递消息。
 
-If the agent is streaming and no `streamingBehavior` is specified, the command returns an error.
+如果代理正在流式传输且未指定 `streamingBehavior`，命令将返回错误。
 
-**Extension commands**: If the message is an extension command (e.g., `/mycommand`), it executes immediately even during streaming. Extension commands manage their own LLM interaction via `pi.sendMessage()`.
+**扩展命令**：如果消息是扩展命令（例如 `/mycommand`），即使在流式传输期间也会立即执行。扩展命令通过 `pi.sendMessage()` 管理自己的 LLM 交互。
 
-**Input expansion**: Skill commands (`/skill:name`) and prompt templates (`/template`) are expanded before sending/queueing.
+**输入展开**：Skill 命令（`/skill:name`）和提示模板（`/template`）在发送/排队之前被展开。
 
-Response:
+响应：
 ```json
 {"id": "req-1", "type": "response", "command": "prompt", "success": true}
 ```
 
-`success: true` means the prompt was accepted, queued, or handled immediately. `success: false` means the prompt was rejected before acceptance. Failures after acceptance are reported through the normal event and message stream, not as a second `response` for the same request id.
+`success: true` 表示提示被接受、排队或立即处理。`success: false` 表示提示在接受前被拒绝。接受后的失败通过正常的事件和消息流报告，而不是作为同一请求 id 的第二个 `response`。
 
-The `images` field is optional. Each image uses `ImageContent` format: `{"type": "image", "data": "base64-encoded-data", "mimeType": "image/png"}`.
+`images` 字段是可选的。每张图片使用 `ImageContent` 格式：`{"type": "image", "data": "base64-encoded-data", "mimeType": "image/png"}`。
 
 #### steer
 
-Queue a steering message while the agent is running. It is delivered after the current assistant turn finishes executing its tool calls, before the next LLM call. Skill commands and prompt templates are expanded. Extension commands are not allowed (use `prompt` instead).
+在代理运行期间排队一条转向（steering）消息。在当前助手轮次完成执行其工具调用之后、下一次 LLM 调用之前投递。Skill 命令和提示模板会被展开。不允许扩展命令（请改用 `prompt`）。
 
 ```json
 {"type": "steer", "message": "Stop and do this instead"}
 ```
 
-With images:
+带图片：
 ```json
 {"type": "steer", "message": "Look at this instead", "images": [{"type": "image", "data": "base64-encoded-data", "mimeType": "image/png"}]}
 ```
 
-The `images` field is optional. Each image uses `ImageContent` format (same as `prompt`).
+`images` 字段是可选的。每张图片使用 `ImageContent` 格式（与 `prompt` 相同）。
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "steer", "success": true}
 ```
 
-See [set_steering_mode](#set_steering_mode) for controlling how steering messages are processed.
+参见 [set_steering_mode](#set_steering_mode) 了解如何控制转向消息的处理方式。
 
 #### follow_up
 
-Queue a follow-up message to be processed after the agent finishes. Delivered only when agent has no more tool calls or steering messages. Skill commands and prompt templates are expanded. Extension commands are not allowed (use `prompt` instead).
+排队一条跟进（follow-up）消息，在代理完成后处理。仅在代理没有更多工具调用或转向消息时投递。Skill 命令和提示模板会被展开。不允许扩展命令（请改用 `prompt`）。
 
 ```json
 {"type": "follow_up", "message": "After you're done, also do this"}
 ```
 
-With images:
+带图片：
 ```json
 {"type": "follow_up", "message": "Also check this image", "images": [{"type": "image", "data": "base64-encoded-data", "mimeType": "image/png"}]}
 ```
 
-The `images` field is optional. Each image uses `ImageContent` format (same as `prompt`).
+`images` 字段是可选的。每张图片使用 `ImageContent` 格式（与 `prompt` 相同）。
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "follow_up", "success": true}
 ```
 
-See [set_follow_up_mode](#set_follow_up_mode) for controlling how follow-up messages are processed.
+参见 [set_follow_up_mode](#set_follow_up_mode) 了解如何控制跟进消息的处理方式。
 
 #### abort
 
-Abort the current agent operation.
+中止当前代理操作。
 
 ```json
 {"type": "abort"}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "abort", "success": true}
 ```
 
 #### new_session
 
-Start a fresh session. Can be cancelled by a `session_before_switch` extension event handler.
+开始一个新会话。可通过 `session_before_switch` 扩展事件处理程序取消。
 
 ```json
 {"type": "new_session"}
 ```
 
-With optional parent session tracking:
+带可选的父会话跟踪：
 ```json
 {"type": "new_session", "parentSession": "/path/to/parent-session.jsonl"}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "new_session", "success": true, "data": {"cancelled": false}}
 ```
 
-If an extension cancelled:
+如果扩展取消了操作：
 ```json
 {"type": "response", "command": "new_session", "success": true, "data": {"cancelled": true}}
 ```
 
-### State
+### 状态（State）
 
 #### get_state
 
-Get current session state.
+获取当前会话状态。
 
 ```json
 {"type": "get_state"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -190,17 +190,17 @@ Response:
 }
 ```
 
-The `model` field is a full [Model](#model) object or `null`. The `sessionName` field is the display name set via `set_session_name`, or omitted if not set.
+`model` 字段是一个完整的 [Model](#model) 对象或 `null`。`sessionName` 字段是通过 `set_session_name` 设置的显示名称，如果未设置则省略。
 
 #### get_messages
 
-Get all messages in the conversation.
+获取对话中的所有消息。
 
 ```json
 {"type": "get_messages"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -210,19 +210,19 @@ Response:
 }
 ```
 
-Messages are `AgentMessage` objects (see [Message Types](#message-types)).
+消息为 `AgentMessage` 对象（参见 [消息类型](#message-types)）。
 
-### Model
+### 模型（Model）
 
 #### set_model
 
-Switch to a specific model.
+切换到指定模型。
 
 ```json
 {"type": "set_model", "provider": "anthropic", "modelId": "claude-sonnet-4-20250514"}
 ```
 
-Response contains the full [Model](#model) object:
+响应包含完整的 [Model](#model) 对象：
 ```json
 {
   "type": "response",
@@ -234,13 +234,13 @@ Response contains the full [Model](#model) object:
 
 #### cycle_model
 
-Cycle to the next available model. Returns `null` data if only one model available.
+循环切换到下一个可用模型。如果只有一个模型可用，则返回 `null` 数据。
 
 ```json
 {"type": "cycle_model"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -254,17 +254,17 @@ Response:
 }
 ```
 
-The `model` field is a full [Model](#model) object.
+`model` 字段是一个完整的 [Model](#model) 对象。
 
 #### get_available_models
 
-List all configured models.
+列出所有已配置的模型。
 
 ```json
 {"type": "get_available_models"}
 ```
 
-Response contains an array of full [Model](#model) objects:
+响应包含完整 [Model](#model) 对象的数组：
 ```json
 {
   "type": "response",
@@ -276,34 +276,34 @@ Response contains an array of full [Model](#model) objects:
 }
 ```
 
-### Thinking
+### 思考（Thinking）
 
 #### set_thinking_level
 
-Set the reasoning/thinking level for models that support it.
+为支持该功能的模型设置推理/思考级别。
 
 ```json
 {"type": "set_thinking_level", "level": "high"}
 ```
 
-Levels: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`
+级别：`"off"`、`"minimal"`、`"low"`、`"medium"`、`"high"`、`"xhigh"`
 
-Note: `"xhigh"` is only supported by OpenAI codex-max models.
+注意：`"xhigh"` 仅由 OpenAI codex-max 模型支持。
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "set_thinking_level", "success": true}
 ```
 
 #### cycle_thinking_level
 
-Cycle through available thinking levels. Returns `null` data if model doesn't support thinking.
+循环切换可用的思考级别。如果模型不支持思考，则返回 `null` 数据。
 
 ```json
 {"type": "cycle_thinking_level"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -313,58 +313,58 @@ Response:
 }
 ```
 
-### Queue Modes
+### 队列模式（Queue Modes）
 
 #### set_steering_mode
 
-Control how steering messages (from `steer`) are delivered.
+控制转向消息（来自 `steer`）的投递方式。
 
 ```json
 {"type": "set_steering_mode", "mode": "one-at-a-time"}
 ```
 
-Modes:
-- `"all"`: Deliver all steering messages after the current assistant turn finishes executing its tool calls
-- `"one-at-a-time"`: Deliver one steering message per completed assistant turn (default)
+模式：
+- `"all"`：在当前助手轮次完成执行其工具调用后投递所有转向消息
+- `"one-at-a-time"`：每个已完成的助手轮次投递一条转向消息（默认）
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "set_steering_mode", "success": true}
 ```
 
 #### set_follow_up_mode
 
-Control how follow-up messages (from `follow_up`) are delivered.
+控制跟进消息（来自 `follow_up`）的投递方式。
 
 ```json
 {"type": "set_follow_up_mode", "mode": "one-at-a-time"}
 ```
 
-Modes:
-- `"all"`: Deliver all follow-up messages when agent finishes
-- `"one-at-a-time"`: Deliver one follow-up message per agent completion (default)
+模式：
+- `"all"`：代理完成时投递所有跟进消息
+- `"one-at-a-time"`：每次代理完成投递一条跟进消息（默认）
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "set_follow_up_mode", "success": true}
 ```
 
-### Compaction
+### 压缩（Compaction）
 
 #### compact
 
-Manually compact conversation context to reduce token usage.
+手动压缩对话上下文以减少 token 使用量。
 
 ```json
 {"type": "compact"}
 ```
 
-With custom instructions:
+带自定义指令：
 ```json
 {"type": "compact", "customInstructions": "Focus on code changes"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -380,45 +380,45 @@ Response:
 }
 ```
 
-`estimatedTokensAfter` is a heuristic estimate over the rebuilt message context immediately after compaction, not a provider-exact token count.
+`estimatedTokensAfter` 是压缩后立即对重建的消息上下文的启发式估算值，而非提供商的精确 token 计数。
 
 #### set_auto_compaction
 
-Enable or disable automatic compaction when context is nearly full.
+启用或禁用上下文接近满载时的自动压缩。
 
 ```json
 {"type": "set_auto_compaction", "enabled": true}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "set_auto_compaction", "success": true}
 ```
 
-### Retry
+### 重试（Retry）
 
 #### set_auto_retry
 
-Enable or disable automatic retry on transient errors (overloaded, rate limit, 5xx).
+启用或禁用发生瞬时错误（过载、速率限制、5xx）时的自动重试。
 
 ```json
 {"type": "set_auto_retry", "enabled": true}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "set_auto_retry", "success": true}
 ```
 
 #### abort_retry
 
-Abort an in-progress retry (cancel the delay and stop retrying).
+中止正在进行的重试（取消延迟并停止重试）。
 
 ```json
 {"type": "abort_retry"}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "abort_retry", "success": true}
 ```
@@ -427,13 +427,13 @@ Response:
 
 #### bash
 
-Execute a shell command and add output to conversation context.
+执行 shell 命令并将输出添加到对话上下文中。
 
 ```json
 {"type": "bash", "command": "ls -la"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -448,7 +448,7 @@ Response:
 }
 ```
 
-If output was truncated, includes `fullOutputPath`:
+如果输出被截断，会包含 `fullOutputPath`：
 ```json
 {
   "type": "response",
@@ -464,11 +464,11 @@ If output was truncated, includes `fullOutputPath`:
 }
 ```
 
-**How bash results reach the LLM:**
+**bash 结果如何到达 LLM：**
 
-The `bash` command executes immediately and returns a `BashResult`. Internally, a `BashExecutionMessage` is created and stored in the agent's message state. This message does NOT emit an event.
+`bash` 命令会立即执行并返回 `BashResult`。在内部，会创建一个 `BashExecutionMessage` 并存储在代理的消息状态中。该消息**不会**发出事件。
 
-When the next `prompt` command is sent, all messages (including `BashExecutionMessage`) are transformed before being sent to the LLM. The `BashExecutionMessage` is converted to a `UserMessage` with this format:
+当下一个 `prompt` 命令发送时，所有消息（包括 `BashExecutionMessage`）在发送到 LLM 之前会被转换。`BashExecutionMessage` 会被转换为以下格式的 `UserMessage`：
 
 ````
 Ran `ls -la`
@@ -478,35 +478,35 @@ drwxr-xr-x ...
 ```
 ````
 
-This means:
-1. Bash output is included in the LLM context on the **next prompt**, not immediately
-2. Multiple bash commands can be executed before a prompt; all outputs will be included
-3. No event is emitted for the `BashExecutionMessage` itself
+这意味着：
+1. Bash 输出会在**下一次 prompt** 时被包含在 LLM 上下文中，而非立即包含
+2. 在发送 prompt 之前可以执行多个 bash 命令；所有输出都会被包含
+3. `BashExecutionMessage` 本身不会发出任何事件
 
 #### abort_bash
 
-Abort a running bash command.
+中止正在运行的 bash 命令。
 
 ```json
 {"type": "abort_bash"}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "abort_bash", "success": true}
 ```
 
-### Session
+### 会话（Session）
 
 #### get_session_stats
 
-Get token usage, cost statistics, and current context window usage.
+获取 token 使用量、费用统计以及当前上下文窗口使用情况。
 
 ```json
 {"type": "get_session_stats"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -537,24 +537,24 @@ Response:
 }
 ```
 
-`tokens` contains assistant usage totals for the current session state. `contextUsage` contains the actual current context-window estimate used for compaction and footer display.
+`tokens` 包含当前会话状态的助手使用总量。`contextUsage` 包含用于压缩和页脚显示的当前上下文窗口实际估算值。
 
-`contextUsage` is omitted when no model or context window is available. `contextUsage.tokens` and `contextUsage.percent` are `null` immediately after compaction until a fresh post-compaction assistant response provides valid usage data.
+当没有模型或上下文窗口可用时，`contextUsage` 会被省略。压缩后、直到获取到有效的压缩后助手响应数据之前，`contextUsage.tokens` 和 `contextUsage.percent` 均为 `null`。
 
 #### export_html
 
-Export session to an HTML file.
+将会话导出为 HTML 文件。
 
 ```json
 {"type": "export_html"}
 ```
 
-With custom path:
+带自定义路径：
 ```json
 {"type": "export_html", "outputPath": "/tmp/session.html"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -566,31 +566,31 @@ Response:
 
 #### switch_session
 
-Load a different session file. Can be cancelled by a `session_before_switch` extension event handler.
+加载不同的会话文件。可通过 `session_before_switch` 扩展事件处理程序取消。
 
 ```json
 {"type": "switch_session", "sessionPath": "/path/to/session.jsonl"}
 ```
 
-Response:
+响应：
 ```json
 {"type": "response", "command": "switch_session", "success": true, "data": {"cancelled": false}}
 ```
 
-If an extension cancelled the switch:
+如果扩展取消了切换：
 ```json
 {"type": "response", "command": "switch_session", "success": true, "data": {"cancelled": true}}
 ```
 
 #### fork
 
-Create a new fork from a previous user message on the active branch. Can be cancelled by a `session_before_fork` extension event handler. Returns the text of the message being forked from.
+从活动分支上的先前用户消息创建新分支。可通过 `session_before_fork` 扩展事件处理程序取消。返回被分叉的消息文本。
 
 ```json
 {"type": "fork", "entryId": "abc123"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -600,7 +600,7 @@ Response:
 }
 ```
 
-If an extension cancelled the fork:
+如果扩展取消了分叉：
 ```json
 {
   "type": "response",
@@ -612,13 +612,13 @@ If an extension cancelled the fork:
 
 #### clone
 
-Duplicate the current active branch into a new session at the current position. Can be cancelled by a `session_before_fork` extension event handler.
+将当前活动分支复制到当前位置的新会话中。可通过 `session_before_fork` 扩展事件处理程序取消。
 
 ```json
 {"type": "clone"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -628,7 +628,7 @@ Response:
 }
 ```
 
-If an extension cancelled the clone:
+如果扩展取消了克隆：
 ```json
 {
   "type": "response",
@@ -640,13 +640,13 @@ If an extension cancelled the clone:
 
 #### get_fork_messages
 
-Get user messages available for forking.
+获取可用于分叉的用户消息。
 
 ```json
 {"type": "get_fork_messages"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -663,18 +663,18 @@ Response:
 
 #### get_entries
 
-Get all session entries in append order (excluding the session header). The session is an append-only tree of entries with stable ids, so an entry id works as a durable cursor: pass the last entry id you have seen as `since` to get only entries strictly after it, even across client restarts. Unlike `get_messages`, this includes pre-compaction history and abandoned branches.
+按追加顺序获取所有会话条目（不包括会话头部）。会话是一个具有稳定 id 的仅追加树（append-only tree）条目，因此条目 id 可作为持久游标：将你见过的最后一个条目 id 作为 `since` 传入，即可获取仅在该条目之后的条目，即使在客户端重启后也有效。与 `get_messages` 不同，这包括压缩前的历史记录和被放弃的分支。
 
 ```json
 {"type": "get_entries"}
 ```
 
-With a cursor:
+带游标：
 ```json
 {"type": "get_entries", "since": "abc123"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -689,17 +689,17 @@ Response:
 }
 ```
 
-`leafId` is the id of the current leaf entry (`null` for an empty session), so a client can tell in one round trip whether the active branch moved. If `since` does not match any entry id, the response is `success: false`.
+`leafId` 是当前叶子条目的 id（空会话为 `null`），客户端可通过一次往返判断活动分支是否移动。如果 `since` 不匹配任何条目 id，则响应为 `success: false`。
 
 #### get_tree
 
-Get the session as a tree of entries. Each node is `{entry, children, label?, labelTimestamp?}`. A well-formed session has a single root; orphaned entries (broken parent chain) also appear as roots.
+以条目树的形式获取会话。每个节点为 `{entry, children, label?, labelTimestamp?}`。格式良好的会话只有一个根节点；孤立条目（父链断裂）也会作为根节点出现。
 
 ```json
 {"type": "get_tree"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -721,13 +721,13 @@ Response:
 
 #### get_last_assistant_text
 
-Get the text content of the last assistant message.
+获取最后一条助手消息的文本内容。
 
 ```json
 {"type": "get_last_assistant_text"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -737,17 +737,17 @@ Response:
 }
 ```
 
-Returns `{"text": null}` if no assistant messages exist.
+如果不存在助手消息，则返回 `{"text": null}`。
 
 #### set_session_name
 
-Set a display name for the current session. The name appears in session listings and helps identify sessions.
+为当前会话设置显示名称。该名称出现在会话列表中，有助于识别会话。
 
 ```json
 {"type": "set_session_name", "name": "my-feature-work"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -756,19 +756,19 @@ Response:
 }
 ```
 
-The current session name is available via `get_state` in the `sessionName` field. To set the initial name when starting RPC mode, pass `--name <name>` or `-n <name>` to the `pi --mode rpc` process.
+当前会话名称可通过 `get_state` 的 `sessionName` 字段获取。要在启动 RPC 模式时设置初始名称，请向 `pi --mode rpc` 进程传递 `--name <name>` 或 `-n <name>`。
 
-### Commands
+### 命令（Commands）
 
 #### get_commands
 
-Get available commands (extension commands, prompt templates, and skills). These can be invoked via the `prompt` command by prefixing with `/`.
+获取可用命令（扩展命令、提示模板和技能）。这些命令可通过在 `prompt` 命令前加上 `/` 来调用。
 
 ```json
 {"type": "get_commands"}
 ```
 
-Response:
+响应：
 ```json
 {
   "type": "response",
@@ -784,26 +784,26 @@ Response:
 }
 ```
 
-Each command has:
-- `name`: Command name (invoke with `/name`)
-- `description`: Human-readable description (optional for extension commands)
-- `source`: What kind of command:
-  - `"extension"`: Registered via `pi.registerCommand()` in an extension
-  - `"prompt"`: Loaded from a prompt template `.md` file
-  - `"skill"`: Loaded from a skill directory (name is prefixed with `skill:`)
-- `location`: Where it was loaded from (optional, not present for extensions):
-  - `"user"`: User-level (`~/.pi/agent/`)
-  - `"project"`: Project-level (`./.pi/agent/`)
-  - `"path"`: Explicit path via CLI or settings
-- `path`: Absolute file path to the command source (optional)
+每个命令包含：
+- `name`：命令名称（通过 `/name` 调用）
+- `description`：人类可读的描述（扩展命令可选）
+- `source`：命令类型：
+  - `"extension"`：通过扩展中的 `pi.registerCommand()` 注册
+  - `"prompt"`：从提示模板 `.md` 文件加载
+  - `"skill"`：从技能目录加载（名称前缀为 `skill:`）
+- `location`：加载来源（可选，扩展命令不存在）：
+  - `"user"`：用户级别（`~/.pi/agent/`）
+  - `"project"`：项目级别（`./.pi/agent/`）
+  - `"path"`：通过 CLI 或设置指定的显式路径
+- `path`：命令源文件的绝对路径（可选）
 
-**Note**: Built-in TUI commands (`/settings`, `/hotkeys`, etc.) are not included. They are handled only in interactive mode and would not execute if sent via `prompt`.
+**注意**：内置 TUI 命令（`/settings`、`/hotkeys` 等）不包含在内。它们仅在交互模式下处理，通过 `prompt` 发送不会执行。
 
-## Events
+## 事件（Events）
 
-Events are streamed to stdout as JSON lines during agent operation. Events do NOT include an `id` field (only responses do).
+在代理运行期间，事件以 JSON 行（JSON lines）的形式流式输出到 stdout。事件**不包含** `id` 字段（只有响应才包含）。
 
-### Event Types
+### 事件类型
 
 | Event | Description |
 |-------|-------------|
@@ -826,7 +826,7 @@ Events are streamed to stdout as JSON lines during agent operation. Events do NO
 
 ### agent_start
 
-Emitted when the agent begins processing a prompt.
+当 agent 开始处理提示时触发。
 
 ```json
 {"type": "agent_start"}
@@ -834,7 +834,7 @@ Emitted when the agent begins processing a prompt.
 
 ### agent_end
 
-Emitted when the agent completes. Contains all messages generated during this run.
+当 agent 完成时触发。包含本次运行生成的所有消息。
 
 ```json
 {
@@ -845,7 +845,7 @@ Emitted when the agent completes. Contains all messages generated during this ru
 
 ### turn_start / turn_end
 
-A turn consists of one assistant response plus any resulting tool calls and results.
+一轮（turn）包含一个助手响应以及任何由此产生的工具调用和结果。
 
 ```json
 {"type": "turn_start"}
@@ -861,16 +861,16 @@ A turn consists of one assistant response plus any resulting tool calls and resu
 
 ### message_start / message_end
 
-Emitted when a message begins and completes. The `message` field contains an `AgentMessage`.
+当消息开始和完成时触发。`message` 字段包含一个 `AgentMessage`。
 
 ```json
 {"type": "message_start", "message": {...}}
 {"type": "message_end", "message": {...}}
 ```
 
-### message_update (Streaming)
+### message_update（流式传输）
 
-Emitted during streaming of assistant messages. Contains both the partial message and a streaming delta event.
+在助手消息流式传输期间触发。包含部分消息和流式增量事件。
 
 ```json
 {
@@ -885,7 +885,7 @@ Emitted during streaming of assistant messages. Contains both the partial messag
 }
 ```
 
-The `assistantMessageEvent` field contains one of these delta types:
+`assistantMessageEvent` 字段包含以下增量类型之一：
 
 | Type | Description |
 |------|-------------|
@@ -902,7 +902,7 @@ The `assistantMessageEvent` field contains one of these delta types:
 | `done` | Message complete (reason: `"stop"`, `"length"`, `"toolUse"`) |
 | `error` | Error occurred (reason: `"aborted"`, `"error"`) |
 
-Example streaming a text response:
+流式传输文本响应示例：
 ```json
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{...}}}
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello","partial":{...}}}
@@ -912,7 +912,7 @@ Example streaming a text response:
 
 ### tool_execution_start / tool_execution_update / tool_execution_end
 
-Emitted when a tool begins, streams progress, and completes execution.
+当工具开始执行、流式传输进度和执行完成时触发。
 
 ```json
 {
@@ -923,7 +923,7 @@ Emitted when a tool begins, streams progress, and completes execution.
 }
 ```
 
-During execution, `tool_execution_update` events stream partial results (e.g., bash output as it arrives):
+执行期间，`tool_execution_update` 事件流式传输部分结果（例如 bash 输出到达时）：
 
 ```json
 {
@@ -938,7 +938,7 @@ During execution, `tool_execution_update` events stream partial results (e.g., b
 }
 ```
 
-When complete:
+完成时：
 
 ```json
 {
@@ -953,11 +953,11 @@ When complete:
 }
 ```
 
-Use `toolCallId` to correlate events. The `partialResult` in `tool_execution_update` contains the accumulated output so far (not just the delta), allowing clients to simply replace their display on each update.
+使用 `toolCallId` 关联事件。`tool_execution_update` 中的 `partialResult` 包含截至目前累积的输出（而不仅仅是增量），因此客户端可以在每次更新时直接替换显示内容。
 
 ### queue_update
 
-Emitted whenever the pending steering or follow-up queue changes.
+每当待处理的转向（steering）或跟进（follow-up）队列发生变化时触发。
 
 ```json
 {
@@ -969,13 +969,13 @@ Emitted whenever the pending steering or follow-up queue changes.
 
 ### compaction_start / compaction_end
 
-Emitted when compaction runs, whether manual or automatic.
+当压缩（compaction）运行时触发，无论是手动还是自动。
 
 ```json
 {"type": "compaction_start", "reason": "threshold"}
 ```
 
-The `reason` field is `"manual"`, `"threshold"`, or `"overflow"`.
+`reason` 字段为 `"manual"`、`"threshold"` 或 `"overflow"`。
 
 ```json
 {
@@ -993,15 +993,15 @@ The `reason` field is `"manual"`, `"threshold"`, or `"overflow"`.
 }
 ```
 
-If `reason` was `"overflow"` and compaction succeeds, `willRetry` is `true` and the agent will automatically retry the prompt.
+如果 `reason` 为 `"overflow"` 且压缩成功，`willRetry` 为 `true`，agent 会自动重试提示。
 
-If compaction was aborted, `result` is `null` and `aborted` is `true`.
+如果压缩被中止，`result` 为 `null`，`aborted` 为 `true`。
 
-If compaction failed (e.g., API quota exceeded), `result` is `null`, `aborted` is `false`, and `errorMessage` contains the error description.
+如果压缩失败（例如 API 配额超限），`result` 为 `null`，`aborted` 为 `false`，`errorMessage` 包含错误描述。
 
 ### auto_retry_start / auto_retry_end
 
-Emitted when automatic retry is triggered after a transient error (overloaded, rate limit, 5xx).
+当发生瞬时错误（过载、速率限制、5xx）后触发自动重试时触发。
 
 ```json
 {
@@ -1021,7 +1021,7 @@ Emitted when automatic retry is triggered after a transient error (overloaded, r
 }
 ```
 
-On final failure (max retries exceeded):
+最终失败（超过最大重试次数）时：
 ```json
 {
   "type": "auto_retry_end",
@@ -1033,7 +1033,7 @@ On final failure (max retries exceeded):
 
 ### extension_error
 
-Emitted when an extension throws an error.
+当扩展抛出错误时触发。
 
 ```json
 {
@@ -1044,36 +1044,36 @@ Emitted when an extension throws an error.
 }
 ```
 
-## Extension UI Protocol
+## 扩展 UI 协议（Extension UI Protocol）
 
-Extensions can request user interaction via `ctx.ui.select()`, `ctx.ui.confirm()`, etc. In RPC mode, these are translated into a request/response sub-protocol on top of the base command/event flow.
+扩展可以通过 `ctx.ui.select()`、`ctx.ui.confirm()` 等方法请求用户交互。在 RPC 模式下，这些方法被转换为基于基础命令/事件流之上的请求/响应子协议。
 
-There are two categories of extension UI methods:
+扩展 UI 方法分为两类：
 
-- **Dialog methods** (`select`, `confirm`, `input`, `editor`): emit an `extension_ui_request` on stdout and block until the client sends back an `extension_ui_response` on stdin with the matching `id`.
-- **Fire-and-forget methods** (`notify`, `setStatus`, `setWidget`, `setTitle`, `set_editor_text`): emit an `extension_ui_request` on stdout but do not expect a response. The client can display the information or ignore it.
+- **对话框方法**（Dialog methods，`select`、`confirm`、`input`、`editor`）：在 stdout 上发出 `extension_ui_request`，并阻塞直到客户端在 stdin 上返回具有匹配 `id` 的 `extension_ui_response`。
+- **即发即忘方法**（Fire-and-forget methods，`notify`、`setStatus`、`setWidget`、`setTitle`、`set_editor_text`）：在 stdout 上发出 `extension_ui_request`，但不期待响应。客户端可以显示该信息或忽略它。
 
-If a dialog method includes a `timeout` field, the agent-side will auto-resolve with a default value when the timeout expires. The client does not need to track timeouts.
+如果对话框方法包含 `timeout` 字段，代理侧将在超时到期时自动使用默认值进行解析。客户端无需跟踪超时。
 
-Some `ExtensionUIContext` methods are not supported or degraded in RPC mode because they require direct TUI access:
-- `custom()` returns `undefined`
-- `setWorkingMessage()`, `setWorkingIndicator()`, `setFooter()`, `setHeader()`, `setEditorComponent()`, `setToolsExpanded()` are no-ops
-- `getEditorText()` returns `""`
-- `getToolsExpanded()` returns `false`
-- `pasteToEditor()` delegates to `setEditorText()` (no paste/collapse handling)
-- `getAllThemes()` returns `[]`
-- `getTheme()` returns `undefined`
-- `setTheme()` returns `{ success: false, error: "..." }`
+某些 `ExtensionUIContext` 方法在 RPC 模式下不受支持或功能降级，因为它们需要直接 TUI 访问：
+- `custom()` 返回 `undefined`
+- `setWorkingMessage()`、`setWorkingIndicator()`、`setFooter()`、`setHeader()`、`setEditorComponent()`、`setToolsExpanded()` 为空操作（no-op）
+- `getEditorText()` 返回 `""`
+- `getToolsExpanded()` 返回 `false`
+- `pasteToEditor()` 委托给 `setEditorText()`（无粘贴/折叠处理）
+- `getAllThemes()` 返回 `[]`
+- `getTheme()` 返回 `undefined`
+- `setTheme()` 返回 `{ success: false, error: "..." }`
 
-Note: `ctx.mode` is `"rpc"` and `ctx.hasUI` is `true` in RPC mode because the dialog and fire-and-forget methods are functional via the extension UI sub-protocol. Use `ctx.mode === "tui"` to guard TUI-specific features like `custom()` that require a real terminal.
+注意：在 RPC 模式下，`ctx.mode` 为 `"rpc"`，`ctx.hasUI` 为 `true`，因为对话框方法和即发即忘方法通过扩展 UI 子协议是可功能的。使用 `ctx.mode === "tui"` 来保护需要真实终端的 TUI 特有功能，例如 `custom()`。
 
-### Extension UI Requests (stdout)
+### 扩展 UI 请求（stdout）
 
-All requests have `type: "extension_ui_request"`, a unique `id`, and a `method` field.
+所有请求都具有 `type: "extension_ui_request"`、唯一的 `id` 和 `method` 字段。
 
 #### select
 
-Prompt the user to choose from a list. Dialog methods with a `timeout` field include the timeout in milliseconds; the agent auto-resolves with `undefined` if the client doesn't respond in time.
+提示用户从列表中选择。带有 `timeout` 字段的对话框方法以毫秒为单位包含超时时间；如果客户端未及时响应，agent 将自动以 `undefined` 解析。
 
 ```json
 {
@@ -1086,11 +1086,11 @@ Prompt the user to choose from a list. Dialog methods with a `timeout` field inc
 }
 ```
 
-Expected response: `extension_ui_response` with `value` (the selected option string) or `cancelled: true`.
+预期响应：`extension_ui_response`，包含 `value`（选中的选项字符串）或 `cancelled: true`。
 
 #### confirm
 
-Prompt the user for yes/no confirmation.
+提示用户进行是/否确认。
 
 ```json
 {
@@ -1103,11 +1103,11 @@ Prompt the user for yes/no confirmation.
 }
 ```
 
-Expected response: `extension_ui_response` with `confirmed: true/false` or `cancelled: true`.
+预期响应：`extension_ui_response`，包含 `confirmed: true/false` 或 `cancelled: true`。
 
 #### input
 
-Prompt the user for free-form text.
+提示用户输入自由格式文本。
 
 ```json
 {
@@ -1119,11 +1119,11 @@ Prompt the user for free-form text.
 }
 ```
 
-Expected response: `extension_ui_response` with `value` (the entered text) or `cancelled: true`.
+预期响应：`extension_ui_response`，包含 `value`（输入的文本）或 `cancelled: true`。
 
 #### editor
 
-Open a multi-line text editor with optional prefilled content.
+打开一个多行文本编辑器，可带预填充内容。
 
 ```json
 {
@@ -1135,11 +1135,11 @@ Open a multi-line text editor with optional prefilled content.
 }
 ```
 
-Expected response: `extension_ui_response` with `value` (the edited text) or `cancelled: true`.
+预期响应：`extension_ui_response`，包含 `value`（编辑后的文本）或 `cancelled: true`。
 
 #### notify
 
-Display a notification. Fire-and-forget, no response expected.
+显示通知。即发即忘，无需响应。
 
 ```json
 {
@@ -1151,11 +1151,11 @@ Display a notification. Fire-and-forget, no response expected.
 }
 ```
 
-The `notifyType` field is `"info"`, `"warning"`, or `"error"`. Defaults to `"info"` if omitted.
+`notifyType` 字段为 `"info"`、`"warning"` 或 `"error"`。如果省略，默认为 `"info"`。
 
 #### setStatus
 
-Set or clear a status entry in the footer/status bar. Fire-and-forget.
+在页脚/状态栏中设置或清除状态条目。即发即忘。
 
 ```json
 {
@@ -1167,11 +1167,11 @@ Set or clear a status entry in the footer/status bar. Fire-and-forget.
 }
 ```
 
-Send `statusText: undefined` (or omit it) to clear the status entry for that key.
+发送 `statusText: undefined`（或省略）以清除该键对应的状态条目。
 
 #### setWidget
 
-Set or clear a widget (block of text lines) displayed above or below the editor. Fire-and-forget.
+设置或清除显示在编辑器上方或下方的 widget（文本行块）。即发即忘。
 
 ```json
 {
@@ -1184,11 +1184,11 @@ Set or clear a widget (block of text lines) displayed above or below the editor.
 }
 ```
 
-Send `widgetLines: undefined` (or omit it) to clear the widget. The `widgetPlacement` field is `"aboveEditor"` (default) or `"belowEditor"`. Only string arrays are supported in RPC mode; component factories are ignored.
+发送 `widgetLines: undefined`（或省略）以清除 widget。`widgetPlacement` 字段为 `"aboveEditor"`（默认）或 `"belowEditor"`。RPC 模式仅支持字符串数组；组件工厂将被忽略。
 
 #### setTitle
 
-Set the terminal window/tab title. Fire-and-forget.
+设置终端窗口/标签页标题。即发即忘。
 
 ```json
 {
@@ -1201,7 +1201,7 @@ Set the terminal window/tab title. Fire-and-forget.
 
 #### set_editor_text
 
-Set the text in the input editor. Fire-and-forget.
+设置输入编辑器中的文本。即发即忘。
 
 ```json
 {
@@ -1212,33 +1212,33 @@ Set the text in the input editor. Fire-and-forget.
 }
 ```
 
-### Extension UI Responses (stdin)
+### 扩展 UI 响应（stdin）
 
-Responses are sent for dialog methods only (`select`, `confirm`, `input`, `editor`). The `id` must match the request.
+仅对对话框方法（`select`、`confirm`、`input`、`editor`）发送响应。`id` 必须与请求匹配。
 
-#### Value response (select, input, editor)
+#### 值响应（select、input、editor）
 
 ```json
 {"type": "extension_ui_response", "id": "uuid-1", "value": "Allow"}
 ```
 
-#### Confirmation response (confirm)
+#### 确认响应（confirm）
 
 ```json
 {"type": "extension_ui_response", "id": "uuid-2", "confirmed": true}
 ```
 
-#### Cancellation response (any dialog)
+#### 取消响应（任意对话框）
 
-Dismiss any dialog method. The extension receives `undefined` (for select/input/editor) or `false` (for confirm).
+关闭任意对话框方法。扩展将收到 `undefined`（对于 select/input/editor）或 `false`（对于 confirm）。
 
 ```json
 {"type": "extension_ui_response", "id": "uuid-3", "cancelled": true}
 ```
 
-## Error Handling
+## 错误处理（Error Handling）
 
-Failed commands return a response with `success: false`:
+失败的命令返回带有 `success: false` 的响应：
 
 ```json
 {
@@ -1249,7 +1249,7 @@ Failed commands return a response with `success: false`:
 }
 ```
 
-Parse errors:
+解析错误：
 
 ```json
 {
@@ -1260,13 +1260,13 @@ Parse errors:
 }
 ```
 
-## Types
+## 类型（Types）
 
-Source files:
-- [`packages/ai/src/types.ts`](../../ai/src/types.ts) - `Model`, `UserMessage`, `AssistantMessage`, `ToolResultMessage`
-- [`packages/agent/src/types.ts`](../../agent/src/types.ts) - `AgentMessage`, `AgentEvent`
+源文件：
+- [`packages/ai/src/types.ts`](../../ai/src/types.ts) - `Model`、`UserMessage`、`AssistantMessage`、`ToolResultMessage`
+- [`packages/agent/src/types.ts`](../../agent/src/types.ts) - `AgentMessage`、`AgentEvent`
 - [`src/core/messages.ts`](../src/core/messages.ts) - `BashExecutionMessage`
-- [`src/modes/rpc/rpc-types.ts`](../src/modes/rpc/rpc-types.ts) - RPC command/response types, extension UI request/response types
+- [`src/modes/rpc/rpc-types.ts`](../src/modes/rpc/rpc-types.ts) - RPC 命令/响应类型、扩展 UI 请求/响应类型
 
 ### Model
 
@@ -1301,7 +1301,7 @@ Source files:
 }
 ```
 
-The `content` field can be a string or an array of `TextContent`/`ImageContent` blocks.
+`content` 字段可以是字符串，也可以是 `TextContent`/`ImageContent` 块的数组。
 
 ### AssistantMessage
 
@@ -1328,7 +1328,7 @@ The `content` field can be a string or an array of `TextContent`/`ImageContent` 
 }
 ```
 
-Stop reasons: `"stop"`, `"length"`, `"toolUse"`, `"error"`, `"aborted"`
+停止原因：`"stop"`、`"length"`、`"toolUse"`、`"error"`、`"aborted"`
 
 ### ToolResultMessage
 
@@ -1345,7 +1345,7 @@ Stop reasons: `"stop"`, `"length"`, `"toolUse"`, `"error"`, `"aborted"`
 
 ### BashExecutionMessage
 
-Created by the `bash` RPC command (not by LLM tool calls):
+由 `bash` RPC 命令创建（非 LLM 工具调用）：
 
 ```json
 {
@@ -1375,7 +1375,7 @@ Created by the `bash` RPC command (not by LLM tool calls):
 }
 ```
 
-## Example: Basic Client (Python)
+## 示例：基础客户端（Python）
 
 ```python
 import subprocess
@@ -1411,11 +1411,11 @@ for event in read_events():
         break
 ```
 
-## Example: Interactive Client (Node.js)
+## 示例：交互式客户端（Node.js）
 
-See [`test/rpc-example.ts`](../test/rpc-example.ts) for a complete interactive example, or [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts) for a typed client implementation.
+参见 [`test/rpc-example.ts`](../test/rpc-example.ts) 获取完整的交互式示例，或参见 [`src/modes/rpc/rpc-client.ts`](../src/modes/rpc/rpc-client.ts) 获取类型化客户端实现。
 
-For a complete example of handling the extension UI protocol, see [`examples/rpc-extension-ui.ts`](../examples/rpc-extension-ui.ts) which pairs with the [`examples/extensions/rpc-demo.ts`](../examples/extensions/rpc-demo.ts) extension.
+有关处理扩展 UI 协议的完整示例，请参见 [`examples/rpc-extension-ui.ts`](../examples/rpc-extension-ui.ts)，该示例与 [`examples/extensions/rpc-demo.ts`](../examples/extensions/rpc-demo.ts) 扩展配合使用。
 
 ```javascript
 const { spawn } = require("child_process");
@@ -1468,10 +1468,6 @@ process.on("SIGINT", () => {
     agent.stdin.write(JSON.stringify({ type: "abort" }) + "\n");
 });
 ```
-
-## 事件（Events）
-
-在 agent 运行期间，事件以 JSON 行（JSON lines）的形式流式输出到 stdout。事件**不包含** `id` 字段（只有响应才包含）。
 
 ### 事件类型
 
