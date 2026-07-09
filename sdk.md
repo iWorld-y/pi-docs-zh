@@ -652,7 +652,7 @@ import {
 
 const customSkill: Skill = {
   name: "my-skill",
-  description: "Custom instructions",
+  description: "自定义指令",
   filePath: "/path/to/SKILL.md",
   baseDir: "/path/to",
   source: "custom",
@@ -671,7 +671,7 @@ const { session } = await createAgentSession({ resourceLoader: loader });
 
 > See [examples/sdk/04-skills.ts](../examples/sdk/04-skills.ts)
 
-### Context Files
+### 上下文文件（Context Files）
 
 ```typescript
 import { createAgentSession, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
@@ -691,7 +691,7 @@ const { session } = await createAgentSession({ resourceLoader: loader });
 
 > See [examples/sdk/07-context-files.ts](../examples/sdk/07-context-files.ts)
 
-### Slash Commands
+### 斜杠命令（Slash Commands）
 
 ```typescript
 import {
@@ -702,7 +702,7 @@ import {
 
 const customCommand: PromptTemplate = {
   name: "deploy",
-  description: "Deploy the application",
+  description: "部署应用",
   source: "(custom)",
   content: "# Deploy\n\n1. Build\n2. Test\n3. Deploy",
 };
@@ -720,9 +720,9 @@ const { session } = await createAgentSession({ resourceLoader: loader });
 
 > See [examples/sdk/08-prompt-templates.ts](../examples/sdk/08-prompt-templates.ts)
 
-### Session Management
+### 会话管理（Session Management）
 
-Sessions use a tree structure with `id`/`parentId` linking, enabling in-place branching.
+会话使用带有 `id`/`parentId` 链接的树形结构，支持原地分支。
 
 ```typescript
 import {
@@ -735,17 +735,17 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
-// In-memory (no persistence)
+// 内存模式（无持久化）
 const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
 });
 
-// New persistent session
+// 新建持久化会话
 const { session: persisted } = await createAgentSession({
   sessionManager: SessionManager.create(process.cwd()),
 });
 
-// Continue most recent
+// 继续最近的会话
 const { session: continued, modelFallbackMessage } = await createAgentSession({
   sessionManager: SessionManager.continueRecent(process.cwd()),
 });
@@ -753,16 +753,16 @@ if (modelFallbackMessage) {
   console.log("Note:", modelFallbackMessage);
 }
 
-// Open specific file
+// 打开指定文件
 const { session: opened } = await createAgentSession({
   sessionManager: SessionManager.open("/path/to/session.jsonl"),
 });
 
-// List sessions
+// 列出会话
 const currentProjectSessions = await SessionManager.list(process.cwd());
 const allSessions = await SessionManager.listAll(process.cwd());
 
-// Session replacement API for /new, /resume, /fork, /clone, and import flows.
+// 会话替换 API，用于 /new、/resume、/fork、/clone 及导入流程
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const services = await createAgentSessionServices({ cwd });
   return {
@@ -782,59 +782,59 @@ const runtime = await createAgentSessionRuntime(createRuntime, {
   sessionManager: SessionManager.create(process.cwd()),
 });
 
-// Replace the active session with a fresh one
+// 用全新会话替换当前活动会话
 await runtime.newSession();
 
-// Replace the active session with another saved session
+// 用另一个已保存的会话替换当前活动会话
 await runtime.switchSession("/path/to/session.jsonl");
 
-// Replace the active session with a fork from a specific user entry
+// 用从特定用户条目创建的分支替换当前活动会话
 await runtime.fork("entry-id");
 
-// Clone the active path through a specific entry
+// 克隆通过特定条目的路径
 await runtime.fork("entry-id", { position: "at" });
 ```
 
-**SessionManager tree API:**
+**SessionManager 树形 API：**
 
 ```typescript
 const sm = SessionManager.open("/path/to/session.jsonl");
 
-// Session listing
+// 会话列表
 const currentProjectSessions = await SessionManager.list(process.cwd());
 const allSessions = await SessionManager.listAll(process.cwd());
 
-// Tree traversal
-const entries = sm.getEntries();        // All entries (excludes header)
-const tree = sm.getTree();              // Full tree structure
-const path = sm.getPath();              // Path from root to current leaf
-const leaf = sm.getLeafEntry();         // Current leaf entry
-const entry = sm.getEntry(id);          // Get entry by ID
-const children = sm.getChildren(id);    // Direct children of entry
+// 树遍历
+const entries = sm.getEntries();        // 所有条目（不含头部）
+const tree = sm.getTree();              // 完整树结构
+const path = sm.getPath();              // 从根到当前叶节点的路径
+const leaf = sm.getLeafEntry();         // 当前叶节点条目
+const entry = sm.getEntry(id);          // 按 ID 获取条目
+const children = sm.getChildren(id);    // 条目的直接子节点
 
-// Labels
-const label = sm.getLabel(id);          // Get label for entry
-sm.appendLabelChange(id, "checkpoint"); // Set label
+// 标签
+const label = sm.getLabel(id);          // 获取条目标签
+sm.appendLabelChange(id, "checkpoint"); // 设置标签
 
-// Branching
-sm.branch(entryId);                     // Move leaf to earlier entry
-sm.branchWithSummary(id, "Summary...");  // Branch with context summary
-sm.createBranchedSession(leafId);       // Extract path to new file
+// 分支
+sm.branch(entryId);                     // 将叶节点移动到更早的条目
+sm.branchWithSummary(id, "Summary...");  // 带上下文摘要的分支
+sm.createBranchedSession(leafId);       // 将路径提取到新文件
 ```
 
 > See [examples/sdk/11-sessions.ts](../examples/sdk/11-sessions.ts) and [Session Format](session-format.md)
 
-### Settings Management
+### 设置管理（Settings Management）
 
 ```typescript
 import { createAgentSession, SettingsManager, SessionManager } from "@earendil-works/pi-coding-agent";
 
-// Default: loads from files (global + project merged)
+// 默认：从文件加载（全局 + 项目合并）
 const { session } = await createAgentSession({
   settingsManager: SettingsManager.create(),
 });
 
-// With overrides
+// 带覆盖
 const settingsManager = SettingsManager.create();
 settingsManager.applyOverrides({
   compaction: { enabled: false },
@@ -842,42 +842,42 @@ settingsManager.applyOverrides({
 });
 const { session } = await createAgentSession({ settingsManager });
 
-// In-memory (no file I/O, for testing)
+// 内存模式（无文件 I/O，用于测试）
 const { session } = await createAgentSession({
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
   sessionManager: SessionManager.inMemory(),
 });
 
-// Custom directories
+// 自定义目录
 const { session } = await createAgentSession({
   settingsManager: SettingsManager.create("/custom/cwd", "/custom/agent"),
 });
 ```
 
-**Static factories:**
-- `SettingsManager.create(cwd?, agentDir?)` - Load from files
-- `SettingsManager.inMemory(settings?)` - No file I/O
+**静态工厂方法：**
+- `SettingsManager.create(cwd?, agentDir?)` - 从文件加载
+- `SettingsManager.inMemory(settings?)` - 无文件 I/O
 
-**Project-specific settings:**
+**项目级设置：**
 
-Settings load from two locations and merge:
-1. Global: `~/.pi/agent/settings.json`
-2. Project: `<cwd>/.pi/settings.json`
+设置从两个位置加载并合并：
+1. 全局：`~/.pi/agent/settings.json`
+2. 项目：`<cwd>/.pi/settings.json`
 
-Project overrides global. Nested objects merge keys. Setters modify global settings by default.
+项目设置覆盖全局设置。嵌套对象按键合并。setter 默认修改全局设置。
 
-**Persistence and error handling semantics:**
+**持久化与错误处理语义：**
 
-- Settings getters/setters are synchronous for in-memory state.
-- Setters enqueue persistence writes asynchronously.
-- Call `await settingsManager.flush()` when you need a durability boundary (for example, before process exit or before asserting file contents in tests).
-- `SettingsManager` does not print settings I/O errors. Use `settingsManager.drainErrors()` and report them in your app layer.
+- 设置的 getter/setter 对内存状态是同步的。
+- setter 异步排队持久化写入。
+- 当需要持久性边界时（例如，进程退出前或测试中断言文件内容前），调用 `await settingsManager.flush()`。
+- `SettingsManager` 不会打印设置 I/O 错误。使用 `settingsManager.drainErrors()` 并在应用层报告它们。
 
 > See [examples/sdk/10-settings.ts](../examples/sdk/10-settings.ts)
 
-## ResourceLoader
+## 资源加载器（ResourceLoader）
 
-Use `DefaultResourceLoader` to discover extensions, skills, prompts, themes, and context files.
+使用 `DefaultResourceLoader` 来发现扩展、技能（skills）、提示模板（prompts）、主题和上下文文件。
 
 ```typescript
 import {
@@ -898,19 +898,19 @@ const themes = loader.getThemes();
 const contextFiles = loader.getAgentsFiles().agentsFiles;
 ```
 
-## Return Value
+## 返回值（Return Value）
 
-`createAgentSession()` returns:
+`createAgentSession()` 返回：
 
 ```typescript
 interface CreateAgentSessionResult {
-  // The session
+  // 会话
   session: AgentSession;
-  
-  // Extensions result (for runner setup)
+
+  // 扩展结果（用于 runner 设置）
   extensionsResult: LoadExtensionsResult;
-  
-  // Warning if session model couldn't be restored
+
+  // 如果会话模型无法恢复时的警告
   modelFallbackMessage?: string;
 }
 
@@ -921,7 +921,7 @@ interface LoadExtensionsResult {
 }
 ```
 
-## Complete Example
+## 完整示例（Complete Example）
 
 ```typescript
 import { getModel } from "@earendil-works/pi-ai";
@@ -936,22 +936,22 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 
-// Set up auth storage (custom location)
+// 设置认证存储（自定义位置）
 const authStorage = AuthStorage.create("/custom/agent/auth.json");
 
-// Runtime API key override (not persisted)
+// 运行时 API 密钥覆盖（不持久化）
 if (process.env.MY_KEY) {
   authStorage.setRuntimeApiKey("anthropic", process.env.MY_KEY);
 }
 
-// Model registry (no custom models.json)
+// 模型注册表（无自定义 models.json）
 const modelRegistry = ModelRegistry.create(authStorage);
 
-// Inline tool
+// 内联工具
 const statusTool = defineTool({
   name: "status",
   label: "Status",
-  description: "Get system status",
+  description: "获取系统状态",
   parameters: Type.Object({}),
   execute: async () => ({
     content: [{ type: "text", text: `Uptime: ${process.uptime()}s` }],
@@ -962,7 +962,7 @@ const statusTool = defineTool({
 const model = getModel("anthropic", "claude-opus-4-5");
 if (!model) throw new Error("Model not found");
 
-// In-memory settings with overrides
+// 带覆盖的内存设置
 const settingsManager = SettingsManager.inMemory({
   compaction: { enabled: false },
   retry: { enabled: true, maxRetries: 2 },
@@ -1002,13 +1002,13 @@ session.subscribe((event) => {
 await session.prompt("Get status and list files.");
 ```
 
-## Run Modes
+## 运行模式（Run Modes）
 
-The SDK exports run mode utilities for building custom interfaces on top of `createAgentSession()`:
+SDK 导出了运行模式工具，用于在 `createAgentSession()` 之上构建自定义界面：
 
 ### InteractiveMode
 
-Full TUI interactive mode with editor, chat history, and all built-in commands:
+完整的 TUI 交互模式，带有编辑器、聊天历史和所有内置命令：
 
 ```typescript
 import {
@@ -1048,7 +1048,7 @@ await mode.run();
 
 ### runPrintMode
 
-Single-shot mode: send prompts, output result, exit:
+单次模式：发送提示，输出结果，退出：
 
 ```typescript
 import {
@@ -1085,7 +1085,7 @@ await runPrintMode(runtime, {
 
 ### runRpcMode
 
-JSON-RPC mode for subprocess integration:
+用于子进程集成的 JSON-RPC 模式：
 
 ```typescript
 import {
@@ -1117,9 +1117,9 @@ await runRpcMode(runtime);
 
 See [RPC documentation](rpc.md) for the JSON protocol.
 
-## RPC Mode Alternative
+## RPC 模式替代方案（RPC Mode Alternative）
 
-For subprocess-based integration without building with the SDK, use the CLI directly:
+对于不使用 SDK 构建的基于子进程的集成，可以直接使用 CLI：
 
 ```bash
 pi --mode rpc --no-session
@@ -1127,39 +1127,39 @@ pi --mode rpc --no-session
 
 See [RPC documentation](rpc.md) for the JSON protocol.
 
-The SDK is preferred when:
-- You want type safety
-- You're in the same Node.js process
-- You need direct access to agent state
-- You want to customize tools/extensions programmatically
+SDK 优先适用于以下场景：
+- 需要类型安全
+- 在同一个 Node.js 进程中
+- 需要直接访问 agent 状态
+- 希望以编程方式自定义工具/扩展
 
-RPC mode is preferred when:
-- You're integrating from another language
-- You want process isolation
-- You're building a language-agnostic client
+RPC 模式优先适用于以下场景：
+- 从其他语言集成
+- 需要进程隔离
+- 构建语言无关的客户端
 
-## Exports
+## 导出（Exports）
 
-The main entry point exports:
+主入口导出：
 
 ```typescript
-// Factory
+// 工厂方法
 createAgentSession
 createAgentSessionRuntime
 AgentSessionRuntime
 
-// Auth and Models
+// 认证与模型
 AuthStorage
 ModelRegistry
 resolveCliModel
 resolveModelScopeWithDiagnostics
 
-// Resource loading
+// 资源加载
 DefaultResourceLoader
 type ResourceLoader
 createEventBus
 
-// Constants and helpers
+// 常量与辅助函数
 CONFIG_DIR_NAME
 defineTool
 getAgentDir
@@ -1168,17 +1168,17 @@ getReadmePath
 getDocsPath
 getExamplesPath
 
-// Session management
+// 会话管理
 SessionManager
 SettingsManager
 
-// Tool factories
+// 工具工厂
 createCodingTools
 createReadOnlyTools
 createReadTool, createBashTool, createEditTool, createWriteTool
 createGrepTool, createFindTool, createLsTool
 
-// Types
+// 类型
 type CreateAgentSessionOptions
 type CreateAgentSessionResult
 type ExtensionFactory
@@ -1190,4 +1190,4 @@ type PromptTemplate
 type Tool
 ```
 
-For extension types, see [extensions.md](extensions.md) for the full API.
+扩展类型请参见 [extensions.md](extensions.md) 了解完整 API。
