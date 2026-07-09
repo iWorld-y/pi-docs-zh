@@ -1,0 +1,19 @@
+# 上游文档基线（对照翻译用）
+# 真相源是 pi-mono 的 commit，不是本仓副本。
+
+repo: https://github.com/earendil-works/pi-mono
+path: packages/coding-agent/docs
+commit: a6f720e6caf1cf429e382011156c015fa204c512
+date: 2026-07-09
+submodule: vendor/pi-mono
+note: pin 与 vendor/pi-mono 应一致。对照/同步后更新本文件 commit，并 git add vendor/pi-mono。
+
+# 取原文（submodule 已 checkout pin 时）:
+#   vendor/pi-mono/packages/coding-agent/docs/<file>.md
+# 或 raw:
+#   https://raw.githubusercontent.com/earendil-works/pi-mono/<commit>/packages/coding-agent/docs/<file>.md
+#
+# 检查变更:
+#   ./scripts/check-upstream.sh
+#   ./scripts/check-upstream.sh files
+#   ./scripts/check-upstream.sh diff settings.md
