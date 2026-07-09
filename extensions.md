@@ -2386,7 +2386,7 @@ const wasExpanded = ctx.ui.getToolsExpanded();
 ctx.ui.setToolsExpanded(true);
 ctx.ui.setToolsExpanded(wasExpanded);
 
-// Custom editor (vim mode, emacs mode, etc.)
+// 自定义编辑器（vim 模式、emacs 模式等）
 ctx.ui.setEditorComponent((tui, theme, keybindings) => new VimEditor(tui, theme, keybindings));
 const currentEditor = ctx.ui.getEditorComponent();
 ctx.ui.setEditorComponent((tui, theme, keybindings) =>
